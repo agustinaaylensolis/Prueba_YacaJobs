@@ -10,13 +10,18 @@
     },
     {
       "src": "server.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "backend/**"
+        ]
+      }
     }
   ],
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "server.ts"
+      "destination": "/server.ts"
     },
     {
       "source": "/(.*)",
