@@ -123,6 +123,11 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
     loadTrades();
   }, []);
 
+  React.useEffect(() => {
+    if (!message.text) return;
+    setMessage({ text: '', type: null });
+  }, [formData, role, step, isLogin]);
+
   const validate = () => {
     if (isLogin) return !!(formData.email && formData.password);
     if (step === 1) return !!(formData.email && formData.password);
