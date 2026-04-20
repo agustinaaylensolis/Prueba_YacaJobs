@@ -4,7 +4,7 @@ dotenv.config();
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './backend/src/app.module.js';
-import { ValidationPipe } from '@nestjs/common';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,6 +13,26 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let cachedApp: any;
+
+function flattenValidationErrors(validationErrors: any[], parentPath = ''): Array<{ field: string; message: string }> {
+  const parsed: Array<{ field: string; message: string }> = [];
+
+  for (const validationError of validationErrors) {
+    const currentPath = parentPath ? `${parentPath}.${validationError.property}` : validationError.property;
+
+    if (validationError.constraints) {
+      for (const message of Object.values(validationError.constraints)) {
+        parsed.push({ field: currentPath, message: String(message) });
+      }
+    }
+
+    if (validationError.children?.length) {
+      parsed.push(...flattenValidationErrors(validationError.children, currentPath));
+    }
+  }
+
+  return parsed;
+}
 
 async function bootstrap() {
   if (cachedApp) return cachedApp;
@@ -23,7 +43,18 @@ async function bootstrap() {
     
     // 1. NEST CONFIG FIRST
     app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      exceptionFactory: (validationErrors = []) => {
+        const errors = flattenValidationErrors(validationErrors as any[]);
+        return new BadRequestException({
+          message: 'Revisa los campos marcados.',
+          errors,
+        });
+      },
+    }));
 
     // 2. MIDDLEWARE via app.use (standard Nest way)
     app.use((req: any, res: any, next: any) => {

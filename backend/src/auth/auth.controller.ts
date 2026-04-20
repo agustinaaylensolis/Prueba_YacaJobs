@@ -7,6 +7,28 @@ import { AuthService } from './auth.service.js';
 @Controller('auth')
 export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
+
+  private normalizeErrorPayload(error: any) {
+    if (typeof error?.getResponse === 'function') {
+      const response = error.getResponse();
+      if (typeof response === 'string') {
+        return { message: response };
+      }
+      if (response && typeof response === 'object') {
+        const message = Array.isArray((response as any).message)
+          ? (response as any).message.join(', ')
+          : (response as any).message;
+        return { ...response, message: message || error?.message || 'Error inesperado.' };
+      }
+    }
+
+    return { message: error?.message || 'Error inesperado.' };
+  }
+
+  private getErrorStatus(error: any) {
+    if (typeof error?.getStatus === 'function') return error.getStatus();
+    return error?.status || 500;
+  }
   
   @Post('register/client')
   async registerClient(@Body() registerDto: RegisterClientDto, @Res() res: Response) {
@@ -20,7 +42,9 @@ export class AuthController {
       return res.status(201).json({ status: 'success', message: 'Cliente registrado', user });
     } catch (error: any) {
       console.error('ERROR EN REGISTRO CLIENTE:', error);
-      return res.status(error.status || 500).json({ status: 'error', message: error.message });
+      const status = this.getErrorStatus(error);
+      const payload = this.normalizeErrorPayload(error);
+      return res.status(status).json({ status: 'error', ...payload });
     }
   }
 
@@ -46,7 +70,9 @@ export class AuthController {
       return res.status(201).json({ status: 'success', message: 'Trabajador registrado', user });
     } catch (error: any) {
       console.error('ERROR EN REGISTRO TRABAJADOR:', error);
-      return res.status(error.status || 500).json({ status: 'error', message: error.message });
+      const status = this.getErrorStatus(error);
+      const payload = this.normalizeErrorPayload(error);
+      return res.status(status).json({ status: 'error', ...payload });
     }
   }
 

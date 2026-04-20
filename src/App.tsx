@@ -10,9 +10,9 @@ import { supabase } from './lib/supabase';
 const Logo = ({ variant = 1 }: { variant?: 1 | 2 }) => (
   <div className="flex items-center gap-2">
     <div className={`w-10 h-10 bg-primary rounded-2xl flex items-center justify-center p-1`}>
-      <img src="https://raw.githubusercontent.com/BenjaminZimerman/yacajobs-assets/main/logo1.png" alt="Logo" className="w-full h-full object-contain" onError={(e) => {
-        // Fallback if the raw github link doesn't work (which it won't until uploaded)
-        e.currentTarget.src = "https://picsum.photos/seed/yaca/100/100";
+      <img src="/images/logo1.png" alt="Logo" className="w-full h-full object-contain" onError={(e) => {
+        // accion alternativa si la imagen no carga
+        e.currentTarget.src = "/images/logo1.png";
       }} />
     </div>
     {variant === 2 && <span className="text-2xl font-bold tracking-tight text-primary">YacaJobs</span>}
@@ -61,7 +61,9 @@ const LandingPage = ({ onStart }: { onStart: (role: UserRole | null, isLogin: bo
     >
       <div className="flex justify-center mb-8">
         <div className="p-8 bg-white rounded-[4rem] shadow-xl">
-           <img src="https://raw.githubusercontent.com/BenjaminZimerman/yacajobs-assets/main/logo2.png" alt="Hero Logo" className="w-64 h-auto" />
+           <img src="/images/logo1.png" alt="Hero Logo" className="w-64 h-auto" onError={(e) => {
+             e.currentTarget.src = "/images/logo1.png";
+           }} />
         </div>
       </div>
       
@@ -108,6 +110,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
   const [step, setStep] = useState(1);
   const [isLogin, setIsLogin] = useState(initialIsLogin);
   const [message, setMessage] = useState<{text: string, type: 'success' | 'error' | null}>({text: '', type: null});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [trades, setTrades] = useState<any[]>([]);
   const [formData, setFormData] = useState({
@@ -123,19 +126,177 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
     loadTrades();
   }, []);
 
-  const validate = () => {
-    if (isLogin) return !!(formData.email && formData.password);
-    if (step === 1) return !!(formData.email && formData.password);
-    if (step === 2) return !!(formData.name && formData.dni && formData.phone && (role === UserRole.WORKER ? true : formData.age));
-    if (step === 3) {
-      const hasDni = formData.files.dniFront && formData.files.dniBack;
-      if (role === UserRole.CLIENT) return !!hasDni;
-      return !!(hasDni && formData.files.policeCert && formData.tradeId);
+  React.useEffect(() => {
+    if (!message.text) return;
+    setMessage({ text: '', type: null });
+  }, [formData, role, step, isLogin]);
+
+  const fieldToStep: Record<string, number> = {
+    email: 1,
+    password: 1,
+    name: 2,
+    dni: 2,
+    phone: 2,
+    age: 2,
+    dniFront: 3,
+    dniBack: 3,
+    policeCert: 3,
+    tradeId: 3,
+  };
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const setFormField = (field: 'name' | 'email' | 'password' | 'dni' | 'phone' | 'age' | 'tradeId', value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    clearFieldError(field);
+  };
+
+  const setFileField = (field: 'dniFront' | 'dniBack' | 'policeCert', value: File | null) => {
+    setFormData((prev) => ({ ...prev, files: { ...prev.files, [field]: value } }));
+    clearFieldError(field);
+  };
+
+  const jumpToFirstInvalidStep = (errors: Record<string, string>) => {
+    if (isLogin) return;
+    const steps = Object.keys(errors)
+      .map((field) => fieldToStep[field])
+      .filter((value): value is number => Boolean(value));
+    if (!steps.length) return;
+    const targetStep = Math.min(...steps);
+    if (targetStep !== step) setStep(targetStep);
+  };
+
+  const validateCurrentStep = () => {
+    const errors: Record<string, string> = {};
+
+    if (isLogin || step === 1) {
+      if (!formData.email.trim()) {
+        errors.email = 'El correo es obligatorio.';
+      } else if (!/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
+        errors.email = 'Ingresa un correo electronico valido.';
+      }
+
+      if (!formData.password.trim()) {
+        errors.password = 'La contrasena es obligatoria.';
+      } else if (!isLogin && formData.password.trim().length < 8) {
+        errors.password = 'La contrasena debe tener al menos 8 caracteres.';
+      }
+
+      return errors;
     }
-    return false;
+
+    if (step === 2) {
+      if (!formData.name.trim()) errors.name = 'El nombre completo es obligatorio.';
+
+      if (!formData.dni.trim()) {
+        errors.dni = 'El DNI es obligatorio.';
+      } else {
+        const dniNumber = Number(formData.dni);
+        if (Number.isNaN(dniNumber)) {
+          errors.dni = 'El DNI debe ser numerico.';
+        } else if (dniNumber < 1000000) {
+          errors.dni = 'El DNI debe ser mayor o igual a 1000000.';
+        }
+      }
+
+      if (!formData.phone.trim()) errors.phone = 'El celular es obligatorio.';
+
+      if (role === UserRole.CLIENT) {
+        if (!formData.age.trim()) {
+          errors.age = 'La edad es obligatoria.';
+        } else {
+          const ageNumber = Number(formData.age);
+          if (Number.isNaN(ageNumber)) {
+            errors.age = 'La edad debe ser numerica.';
+          } else if (ageNumber < 18) {
+            errors.age = 'La edad debe ser mayor o igual a 18 anios.';
+          }
+        }
+      }
+
+      return errors;
+    }
+
+    if (step === 3) {
+      if (!formData.files.dniFront) errors.dniFront = 'Debes subir el DNI frente.';
+      if (!formData.files.dniBack) errors.dniBack = 'Debes subir el DNI dorso.';
+
+      if (role === UserRole.WORKER) {
+        if (!formData.files.policeCert) {
+          errors.policeCert = 'Debes subir antecedentes penales.';
+        }
+        if (!formData.tradeId) errors.tradeId = 'Selecciona al menos un oficio.';
+      }
+    }
+
+    return errors;
+  };
+
+  const mapBackendField = (rawField: string) => {
+    const normalized = rawField.toLowerCase();
+    if (normalized.includes('correo') || normalized.includes('email')) return 'email';
+    if (normalized.includes('contrase') || normalized.includes('password')) return 'password';
+    if (normalized.includes('nombre')) return 'name';
+    if (normalized.includes('dni') && normalized.includes('frente')) return 'dniFront';
+    if (normalized.includes('dni') && (normalized.includes('dorso') || normalized.includes('reverso'))) return 'dniBack';
+    if (normalized.includes('dni')) return 'dni';
+    if (normalized.includes('celular') || normalized.includes('telefono')) return 'phone';
+    if (normalized.includes('edad')) return 'age';
+    if (normalized.includes('oficio')) return 'tradeId';
+    if (normalized.includes('certificado') || normalized.includes('conducta') || normalized.includes('antecedentes')) return 'policeCert';
+    return null;
+  };
+
+  const mapMessageToField = (rawMessage: string) => mapBackendField(rawMessage);
+
+  const parseBackendValidation = (payload: any) => {
+    const nextFieldErrors: Record<string, string> = {};
+    let normalizedMessage = 'No se pudo completar la operacion.';
+
+    const rawMessage = payload?.message;
+    const rawErrors = payload?.errors;
+
+    if (typeof rawMessage === 'string' && rawMessage.trim()) {
+      normalizedMessage = rawMessage;
+    } else if (Array.isArray(rawMessage) && rawMessage.length) {
+      normalizedMessage = rawMessage.join(' ');
+    }
+
+    if (Array.isArray(rawErrors)) {
+      rawErrors.forEach((errorItem: any) => {
+        const field = mapBackendField(String(errorItem?.field || '')) || mapMessageToField(String(errorItem?.message || ''));
+        if (field && !nextFieldErrors[field] && typeof errorItem?.message === 'string') {
+          nextFieldErrors[field] = errorItem.message;
+        }
+      });
+    }
+
+    const rawMessagesList = Array.isArray(rawMessage)
+      ? rawMessage
+      : typeof rawMessage === 'string'
+        ? rawMessage.split(',')
+        : [];
+
+    rawMessagesList
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+      .forEach((item) => {
+        const field = mapMessageToField(item);
+        if (field && !nextFieldErrors[field]) nextFieldErrors[field] = item;
+      });
+
+    return { fieldErrors: nextFieldErrors, message: normalizedMessage };
   };
 
   const handleBack = () => {
+    setFieldErrors({});
     if (!role) {
       onBackToLanding();
     } else if (isLogin || step === 1) {
@@ -148,6 +309,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
 
   const handleAuthOperation = async () => {
     setMessage({text: '', type: null});
+    setFieldErrors({});
     setIsLoading(true);
 
     try {
@@ -162,8 +324,12 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
           })
         });
 
-        if (!response.ok) throw new Error((await response.json()).message || 'Error en el login');
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw payload;
+        }
         const result = await response.json();
+        setFieldErrors({});
         setMessage({text: '¡Ingreso exitoso!', type: 'success'});
         setTimeout(() => onAuth({ ...result.user, role, name: result.user.nombre_y_apellido_cliente || result.user.nombre_y_apellido_trabajador }), 1000);
       } else {
@@ -197,16 +363,42 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
           body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error((await response.json()).message || 'Error en el registro');
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw payload;
+        }
         const result = await response.json();
+        setFieldErrors({});
         setMessage({text: '¡Registro completado!', type: 'success'});
         setTimeout(() => onAuth({ ...result.user, role, name: result.user.nombre_y_apellido_cliente || result.user.nombre_y_apellido_trabajador }), 1000);
       }
     } catch (error: any) {
-      setMessage({text: error.message, type: 'error'});
+      const { fieldErrors: backendFieldErrors, message: backendMessage } = parseBackendValidation(error);
+      if (Object.keys(backendFieldErrors).length > 0) {
+        setFieldErrors((prev) => ({ ...prev, ...backendFieldErrors }));
+        jumpToFirstInvalidStep(backendFieldErrors);
+      }
+      setMessage({text: backendMessage || 'No se pudo completar la operacion.', type: 'error'});
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSubmitOrNext = async () => {
+    const currentErrors = validateCurrentStep();
+    if (Object.keys(currentErrors).length > 0) {
+      setFieldErrors(currentErrors);
+      jumpToFirstInvalidStep(currentErrors);
+      setMessage({ text: 'Revisa los campos marcados para continuar.', type: 'error' });
+      return;
+    }
+
+    setFieldErrors({});
+    if (isLogin || step === 3) {
+      await handleAuthOperation();
+      return;
+    }
+    setStep(step + 1);
   };
 
   return (
@@ -235,11 +427,11 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
           <div className="space-y-6 pt-4 text-center">
             <h2 className="text-3xl font-bold text-primary">Bienvenido a YacaJobs</h2>
             <div className="grid grid-cols-1 gap-4">
-              <button onClick={() => setRole(UserRole.CLIENT)} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
+              <button onClick={() => { setRole(UserRole.CLIENT); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
                 <div><h3 className="font-bold text-xl text-primary">Soy Cliente</h3><p className="text-sm text-muted">A contratar servicios.</p></div>
                 <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all"/>
               </button>
-              <button onClick={() => setRole(UserRole.WORKER)} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
+              <button onClick={() => { setRole(UserRole.WORKER); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
                 <div><h3 className="font-bold text-xl text-primary">Soy Trabajador</h3><p className="text-sm text-muted">A ofrecer mis servicios.</p></div>
                 <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all"/>
               </button>
@@ -252,17 +444,37 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
             <AnimatePresence mode="wait">
               {(step === 1 || isLogin) && (
                 <motion.div key="s1" className="space-y-4">
-                   <input className="input-soft" placeholder="Correo" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                   <input className="input-soft" placeholder="Contraseña" type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                   <div>
+                     <input className={`input-soft ${fieldErrors.email ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Correo" type="email" value={formData.email} onChange={e => setFormField('email', e.target.value)} />
+                     {fieldErrors.email && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.email}</p>}
+                   </div>
+                   <div>
+                     <input className={`input-soft ${fieldErrors.password ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Contraseña" type="password" value={formData.password} onChange={e => setFormField('password', e.target.value)} />
+                     {fieldErrors.password && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.password}</p>}
+                   </div>
                 </motion.div>
               )}
               {step === 2 && !isLogin && (
                 <motion.div key="s2" className="space-y-4">
-                   <input className="input-soft" placeholder="Nombre completo" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                   <input className="input-soft" placeholder="DNI" value={formData.dni} onChange={e => setFormData({...formData, dni: e.target.value})} />
+                   <div>
+                     <input className={`input-soft ${fieldErrors.name ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Nombre completo" value={formData.name} onChange={e => setFormField('name', e.target.value)} />
+                     {fieldErrors.name && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.name}</p>}
+                   </div>
+                   <div>
+                     <input className={`input-soft ${fieldErrors.dni ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="DNI" value={formData.dni} onChange={e => setFormField('dni', e.target.value)} />
+                     {fieldErrors.dni && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dni}</p>}
+                   </div>
                    <div className="flex gap-4">
-                     {role === UserRole.CLIENT && <input className="input-soft" placeholder="Edad" type="number" value={formData.age} onChange={e => setFormData({...formData, age: e.target.value})} />}
-                     <input className="input-soft" placeholder="Celular" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                     {role === UserRole.CLIENT && (
+                       <div className="flex-1">
+                         <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
+                         {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
+                       </div>
+                     )}
+                     <div className="flex-1">
+                       <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
+                       {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
+                     </div>
                    </div>
                 </motion.div>
               )}
@@ -271,16 +483,20 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                    <div className="space-y-2">
                      <p className="text-xs font-bold text-gray-400 uppercase">Documentación Obligatoria</p>
                      <div className="grid grid-cols-2 gap-4">
-                       <button onClick={() => setFormData({...formData, files: {...formData.files, dniFront: {} as File}})} className={`p-4 border-2 rounded-2xl text-xs font-bold ${formData.files.dniFront ? 'border-primary text-primary' : 'border-dashed text-gray-400'}`}>DNI Frente</button>
-                       <button onClick={() => setFormData({...formData, files: {...formData.files, dniBack: {} as File}})} className={`p-4 border-2 rounded-2xl text-xs font-bold ${formData.files.dniBack ? 'border-primary text-primary' : 'border-dashed text-gray-400'}`}>DNI Dorso</button>
+                       <button onClick={() => setFileField('dniFront', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniFront ? 'border-red-400 text-red-600' : (formData.files.dniFront ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Frente</button>
+                       <button onClick={() => setFileField('dniBack', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniBack ? 'border-red-400 text-red-600' : (formData.files.dniBack ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Dorso</button>
                      </div>
+                     {fieldErrors.dniFront && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniFront}</p>}
+                     {fieldErrors.dniBack && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniBack}</p>}
                      {role === UserRole.WORKER && (
                        <>
-                         <button onClick={() => setFormData({...formData, files: {...formData.files, policeCert: {} as File}})} className={`w-full p-4 border-2 rounded-2xl text-xs font-bold ${formData.files.policeCert ? 'border-primary text-primary' : 'border-dashed text-gray-400'}`}>Antecedentes Penales</button>
-                         <select className="input-soft" value={formData.tradeId} onChange={e => setFormData({...formData, tradeId: e.target.value})}>
+                         <button onClick={() => setFileField('policeCert', {} as File)} className={`w-full p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.policeCert ? 'border-red-400 text-red-600' : (formData.files.policeCert ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>Antecedentes Penales</button>
+                         {fieldErrors.policeCert && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.policeCert}</p>}
+                         <select className={`input-soft ${fieldErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`} value={formData.tradeId} onChange={e => setFormField('tradeId', e.target.value)}>
                            <option value="">Selecciona tu Oficio</option>
                            {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
                          </select>
+                         {fieldErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.tradeId}</p>}
                        </>
                      )}
                    </div>
@@ -288,11 +504,11 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
               )}
             </AnimatePresence>
 
-            <Button onClick={() => (isLogin || step === 3) ? handleAuthOperation() : setStep(step + 1)} disabled={!validate() || isLoading} className="w-full py-4 text-lg flex justify-center items-center gap-2">
+            <Button onClick={handleSubmitOrNext} disabled={isLoading} className="w-full py-4 text-lg flex justify-center items-center gap-2">
               {isLoading && <Loader2 className="w-5 h-5 animate-spin"/>}
               {isLogin ? 'Ingresar' : (step === 3 ? 'Finalizar' : 'Siguiente')}
             </Button>
-            <button onClick={() => { setIsLogin(!isLogin); setStep(1); }} className="w-full text-sm font-bold text-primary hover:underline">
+            <button onClick={() => { setIsLogin(!isLogin); setStep(1); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="w-full text-sm font-bold text-primary hover:underline">
               {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Ingresa'}
             </button>
           </div>
