@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException, BadRequestException, ConflictException, Inject } from '@nestjs/common';
-import { SupabaseService } from '../supabase/supabase.service';
-import { RegisterClientDto } from './dto/register-client.dto';
-import { RegisterWorkerDto } from './dto/register-worker.dto';
+import { SupabaseService } from '../supabase/supabase.service.js';
+import { RegisterClientDto } from './dto/register-client.dto.js';
+import { RegisterWorkerDto } from './dto/register-worker.dto.js';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()

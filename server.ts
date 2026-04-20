@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './backend/src/app.module';
+import { AppModule } from './backend/src/app.module.js';
 import { ValidationPipe } from '@nestjs/common';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';

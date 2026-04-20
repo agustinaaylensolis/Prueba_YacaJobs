@@ -1,8 +1,8 @@
 import { Controller, Post, Get, Body, BadRequestException, HttpCode, HttpStatus, Inject, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { RegisterClientDto } from './dto/register-client.dto';
-import { RegisterWorkerDto } from './dto/register-worker.dto';
-import { AuthService } from './auth.service';
+import { RegisterClientDto } from './dto/register-client.dto.js';
+import { RegisterWorkerDto } from './dto/register-worker.dto.js';
+import { AuthService } from './auth.service.js';
 
 @Controller('auth')
 export class AuthController {

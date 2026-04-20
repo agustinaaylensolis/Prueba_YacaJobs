@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Query, Param, BadRequestException, Inject } from '@nestjs/common';
-import { JobsService } from './jobs.service';
-import { PostulateDto } from './dto/postulate.dto';
-import { CreatePostDto } from './dto/create-post.dto';
+import { JobsService } from './jobs.service.js';
+import { PostulateDto } from './dto/postulate.dto.js';
+import { CreatePostDto } from './dto/create-post.dto.js';
 
 @Controller('jobs')
 export class JobsController {
