@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #2E7D32;
+  --color-primary-soft: rgba(46,125,50,0.08);
+  --color-accent: #2E7D32;
+  --color-muted: #5F6B64;
+  --color-base: #F0F4F1;
+  --color-sidebar: #EBF0EC;
+  
+  --radius-xl: 18px;
+  --radius-2xl: 20px;
+  --radius-3xl: 32px;
+}
+
+body {
+  @apply bg-[#F0F4F1] text-[#1C231F] font-sans antialiased;
+}
+
+.soft-card {
+  @apply bg-white border border-black/5 shadow-sm rounded-[32px] p-6;
+  box-shadow: 0 4px 24px -12px rgba(0,0,0,0.08);
+}
+
+.soft-button {
+  @apply px-6 py-3 rounded-[18px] font-semibold transition-all active:scale-95;
+}
+
+.input-soft {
+  @apply w-full px-5 py-4 bg-black/5 border-transparent rounded-[20px] focus:bg-white focus:border-accent/20 focus:ring-0 transition-all outline-none;
+}
+
+.status-pill {
+  @apply px-3 py-1 bg-[#E8F5E9] text-[#2E7D32] rounded-full text-xs font-bold uppercase tracking-widest;
+}
+
+.sidebar-item {
+  @apply flex items-center gap-3 px-4 py-3 rounded-[20px] text-[#5F6B64] cursor-pointer transition-all;
+}
+
+.sidebar-item.active {
+  @apply bg-white text-[#2E7D32] font-bold shadow-sm;
+}
