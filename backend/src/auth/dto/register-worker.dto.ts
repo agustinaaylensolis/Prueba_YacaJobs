@@ -8,15 +8,15 @@ export class RegisterWorkerDto {
   @IsEmail({}, { message: 'Ingresa un correo electronico valido.' })
   correo_trabajador!: string;
 
-  @IsString({ message: 'La contrasena debe ser texto.' })
-  @MinLength(8, { message: 'La contrasena debe tener al menos 8 caracteres.' })
+  @IsString({ message: 'La contraseña debe ser texto.' })
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
   contraseña_trabajador!: string;
 
   @IsNumber({}, { message: 'El DNI debe ser numerico.' })
-  @Min(1000000, { message: 'El DNI debe ser mayor o igual a 1000000.' })
+  @Min(1000000, { message: 'El DNI debe empezar como máximo en 10 millones' })
   dni_trabajador!: number;
 
-  @IsString({ message: 'El celular debe ser texto.' })
+  @IsString({ message: '' })
   nro_celular_trabajador!: string;
 
   @IsArray({ message: 'Debes enviar una lista de oficios.' })

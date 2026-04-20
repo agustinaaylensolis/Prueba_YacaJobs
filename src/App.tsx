@@ -528,6 +528,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [newPost, setNewPost] = useState({ tradeId: '', description: '', urgency: 'Baja' });
   const [profileData, setProfileData] = useState({ ...user });
   const [isSaving, setIsSaving] = useState(false);
+  const [profileNotice, setProfileNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
   const [viewingPostulations, setViewingPostulations] = useState<any>(null);
   const [postulations, setPostulations] = useState<any[]>([]);
   const [isLoadingPostulations, setIsLoadingPostulations] = useState(false);
@@ -570,6 +571,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const handleUpdateProfile = async () => {
     setIsSaving(true);
+    setProfileNotice({ text: '', type: null });
     try {
       const res = await fetch('/api/jobs/profile/update', {
         method: 'POST',
@@ -585,8 +587,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         })
       });
       if (res.ok) {
-        alert('Perfil actualizado con éxito');
+        setProfileNotice({ text: 'Perfil actualizado con exito.', type: 'success' });
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setProfileNotice({ text: errorData.message || 'No se pudo actualizar el perfil.', type: 'error' });
       }
+    } catch {
+      setProfileNotice({ text: 'No se pudo conectar con el servidor. Intenta nuevamente.', type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -910,6 +917,11 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         {activeTab === 'profile' && (
           <div className="max-w-2xl mx-auto space-y-8">
             <h2 className="text-2xl font-bold">Configuración de Perfil</h2>
+            {profileNotice.text && (
+              <div className={`rounded-2xl p-4 text-sm font-bold ${profileNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {profileNotice.text}
+              </div>
+            )}
             <Card className="p-8 space-y-6">
                <div className="space-y-4">
                   <div className="space-y-1">
@@ -943,6 +955,8 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [forumPosts, setForumPosts] = useState<any[]>([]);
   const [isPostulating, setIsPostulating] = useState<any>(null);
   const [budget, setBudget] = useState({ price: '', materials: '', message: '' });
+  const [postulationNotice, setPostulationNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
+  const [profileNotice, setProfileNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
   const [isLoading, setIsLoading] = useState(false);
   const [profileData, setProfileData] = useState({ ...user });
   const [isSaving, setIsSaving] = useState(false);
@@ -960,29 +974,34 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   React.useEffect(() => { loadPosts(); }, []);
 
   const handlePostulate = async () => {
-    const res = await fetch('/api/jobs/postulate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id_trabajador: user.id_trabajador,
-        id_publi: isPostulating.id_publi,
-        presupuesto: Number(budget.price),
-        descripcion_postulacion: budget.message
-      })
-    });
-    
-    if (res.ok) {
-      setIsPostulating(null);
-      setBudget({ price: '', materials: '', message: '' });
-      alert('¡Postulación enviada exitosamente!');
-    } else {
-      const errorData = await res.json();
-      alert(`Error al enviar presupuesto: ${errorData.message || 'Error desconocido'}`);
+    try {
+      const res = await fetch('/api/jobs/postulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id_trabajador: user.id_trabajador,
+          id_publi: isPostulating.id_publi,
+          presupuesto: Number(budget.price),
+          descripcion_postulacion: budget.message
+        })
+      });
+
+      if (res.ok) {
+        setIsPostulating(null);
+        setBudget({ price: '', materials: '', message: '' });
+        setPostulationNotice({ text: 'Postulacion enviada exitosamente.', type: 'success' });
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setPostulationNotice({ text: errorData.message || 'No se pudo enviar la postulacion.', type: 'error' });
+      }
+    } catch {
+      setPostulationNotice({ text: 'No se pudo conectar con el servidor. Intenta nuevamente.', type: 'error' });
     }
   };
 
   const handleUpdateProfile = async () => {
     setIsSaving(true);
+    setProfileNotice({ text: '', type: null });
     try {
       const res = await fetch('/api/jobs/profile/update', {
         method: 'POST',
@@ -997,8 +1016,13 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         })
       });
       if (res.ok) {
-        alert('Perfil actualizado con éxito');
+        setProfileNotice({ text: 'Perfil actualizado con exito.', type: 'success' });
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setProfileNotice({ text: errorData.message || 'No se pudo actualizar el perfil.', type: 'error' });
       }
+    } catch {
+      setProfileNotice({ text: 'No se pudo conectar con el servidor. Intenta nuevamente.', type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -1032,6 +1056,12 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                 <Loader2 className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} /> Actualizar Foro
               </Button>
             </div>
+
+            {postulationNotice.text && (
+              <div className={`rounded-2xl p-4 text-sm font-bold ${postulationNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {postulationNotice.text}
+              </div>
+            )}
             
             <div className="space-y-4">
                {forumPosts.length > 0 ? forumPosts.map(p => (
@@ -1052,7 +1082,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                             <span className="flex items-center gap-1"><ShieldCheck className="w-3 h-3"/> Cliente Verificado</span>
                           </div>
                        </div>
-                       <Button onClick={() => setIsPostulating(p)} className="px-8">Enviar Presupuesto</Button>
+                        <Button onClick={() => { setIsPostulating(p); setPostulationNotice({ text: '', type: null }); }} className="px-8">Enviar Presupuesto</Button>
                     </div>
                  </Card>
                )) : (
@@ -1097,6 +1127,11 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         {activeTab === 'profile' && (
           <div className="max-w-2xl mx-auto space-y-8">
             <h2 className="text-2xl font-bold">Configuración de Perfil</h2>
+            {profileNotice.text && (
+              <div className={`rounded-2xl p-4 text-sm font-bold ${profileNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {profileNotice.text}
+              </div>
+            )}
             <Card className="p-8 space-y-6">
                <div className="space-y-4">
                   <div className="space-y-1">

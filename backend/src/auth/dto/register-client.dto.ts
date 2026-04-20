@@ -8,12 +8,12 @@ export class RegisterClientDto {
   @IsEmail({}, { message: 'Ingresa un correo electronico valido.' })
   correo_cliente!: string;
 
-  @IsString({ message: 'La contrasena debe ser texto.' })
-  @MinLength(8, { message: 'La contrasena debe tener al menos 8 caracteres.' })
+  @IsString({ message: 'La contraseña debe ser texto.' })
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres.' })
   contraseña_cliente!: string;
 
   @IsInt({ message: 'El DNI debe ser numerico.' })
-  @Min(1000000, { message: 'El DNI debe ser mayor o igual a 1000000.' })
+  @Min(1000000, { message: 'El DNI es obligatorio' })
   dni_cliente!: number;
 
   @IsInt({ message: 'La edad debe ser numerica.' })
