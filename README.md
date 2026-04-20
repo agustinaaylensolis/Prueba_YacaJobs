@@ -9,7 +9,6 @@
 - **Backend (Base)**: Arquitectura limpia en NestJS (código proporcionado en `/backend`).
   - Validaciones estrictas con `class-validator` para edad ≥ 18 años y obligatoriedad de archivos.
 - **Base de Datos**: PostgreSQL compatible con Supabase (script SQL en `/supabase_setup.sql`).
-- **ORM**: Prisma (esquema definido en `/backend/prisma/schema.prisma`).
 
 ## 2. Estructura del Proyecto
 ```text
