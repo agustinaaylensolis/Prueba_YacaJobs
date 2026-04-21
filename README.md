@@ -1,78 +1,77 @@
-# Informe de Desarrollo YacaJobs - MVP Fase 1 🐊
+# YacaJobs - Plataforma de Oficios 
 
-¡Hola! Como Arquitecto de Software, he desarrollado la base sólida para **YacaJobs**, enfocándome en la seguridad, validación de datos y una experiencia de usuario (UX) de alta calidad siguiendo la estética **Soft UI Minimalista**.
+¡Bienvenido a **YacaJobs!** Una plataforma full-stack moderna diseñada para conectar clientes con profesionales de oficios (plomeros, electricistas, carpinteros) bajo una estética **Soft UI** y una arquitectura robusta.
 
-## 1. Stack Tecnológico Implementado
-- **Frontend**: React + TypeScript + Vite + Tailwind CSS.
-  - Diseño basado en bordes muy redondeados (`rounded-[2rem]`), sombras suaves y paleta de verdes corporativa.
-  - Animaciones fluidas con `motion`.
-- **Backend (Base)**: Arquitectura limpia en NestJS (código proporcionado en `/backend`).
-  - Validaciones estrictas con `class-validator` para edad ≥ 18 años y obligatoriedad de archivos.
-- **Base de Datos**: PostgreSQL compatible con Supabase (script SQL en `/supabase_setup.sql`).
-- **ORM**: Prisma (esquema definido en `/backend/prisma/schema.prisma`).
+## Arquitectura del Proyecto
+Este proyecto utiliza una **Arquitectura Híbrida Unificada**:
+- **Core Orquestador (`server.ts`)**: Un único punto de entrada basado en Express que integra el backend de NestJS y el frontend de Vite.
+- **Backend (NestJS)**: Lógica modular en `/backend`. Maneja la API, validaciones estrictas de DTOs y la comunicación segura con Supabase.
+- **Frontend (React + Vite)**: Una Single Page Application (SPA) reactiva alojada en `/src`, estilizada con **Tailwind CSS v4** y animada con `motion`.
+- **Despliegue Serverless**: Totalmente optimizado para **Vercel** mediante funciones de Node.js y reescritura de rutas.
 
-## 2. Estructura del Proyecto
+## Stack Tecnológico
+- **Frontend**: React 19, TypeScript, Tailwind CSS (Soft UI Design), Lucide React (Iconografía).
+- **Backend**: NestJS 11, Express, Class-Validator (Validación de datos).
+- **Base de Datos**: PostgreSQL (vía Supabase).
+- **Autenticación**: JWT/Bcrypt (vía lógica personalizada en NestJS + Supabase).
+- **Despliegue**: Vercel (Configurado en `vercel.json`).
+
+## Estructura 
 ```text
-/
-├── supabase_setup.sql      # Script SQL para crear todas las tablas en Supabase
-├── backend/                # Código base NestJS
-│   ├── prisma/
-│   │   └── schema.prisma   # Esquema 3FN para DB
+├── server.ts               # Orquestador Full-Stack y Entry point para Vercel
+├── vercel.json             # Configuración de despliegue y rewrites
+├── package.json            # Gestión de dependencias unificada
+├── supabase_setup.sql      # Script SQL para inicializar la base de datos
+├── backend/                # Lógica del Servidor (NestJS)
 │   └── src/
-│       └── auth/
-│           ├── dto/        # Objetos de Transferencia con validaciones
-│           └── auth.controller.ts # Lógica de registro diferenciado
-├── src/                    # Código Frontend React
-│   ├── App.tsx             # Aplicación principal (Landing + Dashboards)
-│   ├── constants.ts        # Paleta de colores y activos
-│   ├── index.css           # Estilos globales Soft UI
-│   └── types.ts            # Tipados compartidos
-└── metadata.json           # Configuración del proyecto
+│       ├── auth/           # Registro (Cliente/Trabajador) y Login
+│       ├── jobs/           # Foro de trabajos y Postulaciones
+│       └── supabase/       # Cliente de base de datos global
+└── src/                    # Lógica del Cliente (React)
+    ├── App.tsx             # Vistas de Dashboards y Landing
+    ├── index.css           # Sistema de diseño Soft UI
+    ├── types.ts            # Tipados compartidos
+    └── lib/                # Configuración de Supabase Client
 ```
 
-## 3. Lógica de Negocio y Validaciones (Crítico)
-- **Registro de Cliente**: Obligatorio DNI (Frente/Dorso) y Edad > 18.
-- **Registro de Trabajador**:
-  - **Filtro de Seguridad**: No se permite registro sin: DNI (F/D), Certificado de Buena Conducta y Selección de al menos un oficio.
-  - **Validación Backend**: Los DTOs en NestJS rechazan el registro si falta alguna URL de archivo obligatoria.
-- **Dashboards**:
-  - **Cliente**: Búsqueda por oficio y vista de foro para publicar problemas.
-  - **Trabajador**: Perfil con Scoring (estrellas) y visualización de ofertas sugeridas según su oficio.
+## Características Implementadas
+- **Sistema de Registro Diferenciado**:
+  - **Clientes**: Validación de edad (18+), DNI y perfil básico.
+  - **Trabajadores**: Validación estricta de Foto de DNI, Certificado de Buena Conducta y selección de oficios.
+- **Dashboard del Cliente**:
+  - Búsqueda de trabajadores por oficio.
+  - Publicación de trabajos en el **Foro de Pedidos** con niveles de urgencia.
+  - Visualización y gestión de presupuestos recibidos.
+- **Dashboard del Trabajador**:
+  - Foro de trabajos disponibles en tiempo real.
+  - Sistema de envío de presupuestos (Monto + Descripción).
+  - Perfil profesional con scoring y reputación.
 
-## 4. Guía de Configuración para Supabase
-Para poner en marcha la base de datos y almacenamiento:
+## Configuración y Despliegue
 
-### A. Base de Datos (SQL Editor)
-1. Ve a tu proyecto en **Supabase**.
-2. Abre el **SQL Editor**.
-3. Copia y pega el contenido de `supabase_setup.sql`.
-4. Ejecuta el script. Esto creará el esquema 3FN y los oficios iniciales.
+### 1. Preparar la Base de Datos
+Copia el contenido de `supabase_setup.sql` y ejecútalo en el **SQL Editor** de tu proyecto en Supabase para crear las tablas y los oficios iniciales.
 
-### B. Storage (Cubetas de Archivos)
-1. Ve a **Storage** en Supabase.
-2. Crea una cubeta llamada `dni-archivos` (para clientes y trabajadores) y otra llamada `certificados` (para trabajadores).
-3. Asegúrate de configurar las **Policies** para que los usuarios puedan subir sus propios archivos (Authenticated users can upload).
-
-### C. Variables de Entorno (.env)
-Configura las siguientes variables en tu backend y frontend:
-
-**Backend (.env)**
+### 2. Variables de Envío
+Crea un archivo `.env` (o configura los secrets en AI Studio/Vercel):
 ```env
-DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-ID].supabase.co:5432/postgres"
-SUPABASE_URL="https://[PROJECT-ID].supabase.co"
-SUPABASE_KEY="[TU-SERVICE-ROLE-KEY]"
+# Supabase URL
+VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_URL=https://tu-proyecto.supabase.co
+
+# Supabase Key
+VITE_SUPABASE_ANON_KEY=tu-anon-key
+SUPABASE_KEY=tu-service-role-key # Solo para el backend
 ```
 
-**Frontend (.env)**
-```env
-VITE_SUPABASE_URL="https://[PROJECT-ID].supabase.co"
-VITE_SUPABASE_ANON_KEY="[TU-ANON-KEY]"
+### 3. Ejecución Local
+```bash
+npm install
+npm run dev
 ```
-
-## 5. Próximos Pasos (Fase 2)
-- Implementar el envío de correos de confirmación.
-- Integrar la API de Notificaciones en tiempo real para la mensajería.
-- Realizar el despliegue automático conectando el repositorio de GitHub con **Vercel**.
+El servidor correrá en `http://localhost:3000`, sirviendo tanto la API como el frontend con HMR.
+### 4 . Ejecución Web
+https://prueba-yaca-jobs-theta.vercel.app/
 
 ---
-*Este proyecto fue generado como parte de la entrega de Ingeniería de Software 2 (2026).*
+*Desarrollado para el Proyecto de Ingeniería de Software (2026).*
