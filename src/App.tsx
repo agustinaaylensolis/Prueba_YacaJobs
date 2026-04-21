@@ -51,7 +51,20 @@ const Button = ({ children, onClick, variant = 'primary', className = "", disabl
 };
 
 const getUserDisplayName = (user: any) => {
-  return user?.name || user?.nombre_y_apellido_cliente || user?.nombre_y_apellido_trabajador || 'Usuario';
+  const source = user?.user || user;
+  return source?.name || source?.nombre_y_apellido_cliente || source?.nombre_y_apellido_trabajador || 'Usuario';
+};
+
+const normalizeAuthUser = (userData: any) => {
+  const source = userData?.user || userData || {};
+  const displayName = getUserDisplayName(source);
+
+  return {
+    ...source,
+    name: displayName,
+    celular_cliente: source.celular_cliente ?? source.nro_celular_trabajador,
+    nro_celular_trabajador: source.nro_celular_trabajador ?? source.celular_cliente,
+  };
 };
 
 // --- Views ---
@@ -542,6 +555,10 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [isLoadingWorkerProfile, setIsLoadingWorkerProfile] = useState(false);
   const [workerProfileError, setWorkerProfileError] = useState('');
 
+  React.useEffect(() => {
+    setProfileData({ ...user, name: displayName });
+  }, [user, displayName]);
+
   const loadInitial = async () => {
     const [tRes, pRes] = await Promise.all([
       fetch('/api/jobs/trades'),
@@ -987,17 +1004,66 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [profileData, setProfileData] = useState({ ...user, name: displayName });
   const [isSaving, setIsSaving] = useState(false);
 
-  const loadPosts = async () => {
+  React.useEffect(() => {
+    setProfileData({ ...user, name: displayName });
+  }, [user, displayName]);
+
+  const loadPosts = async (tradeIds: number[] = []) => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/jobs/posts');
-      if (res.ok) setForumPosts(await res.json());
+      if (!tradeIds.length) {
+        setForumPosts([]);
+        return;
+      }
+
+      const responses = await Promise.all(
+        tradeIds.map((tradeId) => fetch(`/api/jobs/posts?tradeId=${tradeId}`))
+      );
+      const payloads = await Promise.all(
+        responses
+          .filter((response) => response.ok)
+          .map((response) => response.json())
+      );
+
+      const combinedPosts = payloads.flat();
+      const uniquePosts = Array.from(new Map(combinedPosts.map((post: any) => [post.id_publi, post])).values());
+      setForumPosts(uniquePosts);
     } finally {
       setIsLoading(false);
     }
   };
 
-  React.useEffect(() => { loadPosts(); }, []);
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadWorkerProfileAndPosts = async () => {
+      try {
+        const profileResponse = await fetch(`/api/jobs/workers/${user.id_trabajador}`);
+        if (!profileResponse.ok) return;
+
+        const profile = await profileResponse.json();
+        const tradeIds = Array.isArray(profile?.oficios)
+          ? profile.oficios
+              .map((trade: any) => Number(trade?.id_oficio))
+              .filter((tradeId: number) => Number.isFinite(tradeId))
+          : [];
+
+        if (isMounted) {
+          await loadPosts(tradeIds);
+        }
+      } catch {
+        if (isMounted) {
+          setForumPosts([]);
+        }
+      }
+    };
+
+    loadWorkerProfileAndPosts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user.id_trabajador]);
 
   const handlePostulate = async () => {
     try {
@@ -1090,7 +1156,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             )}
             
             <div className="space-y-4">
-               {forumPosts.length > 0 ? forumPosts.map(p => (
+              {forumPosts.length > 0 ? forumPosts.map(p => (
                  <Card key={p.id_publi} className="p-8 space-y-4 hover:shadow-lg transition-all border-l-4 border-l-primary">
                     <div className="flex justify-between items-start">
                        <div className="space-y-4 flex-1">
@@ -1112,7 +1178,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     </div>
                  </Card>
                )) : (
-                 <div className="py-20 text-center text-slate-400">No hay publicaciones disponibles en el foro actualmente.</div>
+                 <div className="py-20 text-center text-slate-400">No hay publicaciones disponibles para tu rubro actualmente.</div>
                )}
             </div>
 
@@ -1193,7 +1259,7 @@ export default function App() {
   };
 
   const handleAuth = (userData: any) => {
-    setUser({ ...userData, name: getUserDisplayName(userData) });
+    setUser(normalizeAuthUser(userData));
     setView('dashboard');
   };
 
