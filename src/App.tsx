@@ -531,6 +531,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [profileNotice, setProfileNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
   const [viewingPostulations, setViewingPostulations] = useState<any>(null);
   const [postulations, setPostulations] = useState<any[]>([]);
+  const [postulationsSort, setPostulationsSort] = useState<'price_asc' | 'rating_desc'>('price_asc');
   const [isLoadingPostulations, setIsLoadingPostulations] = useState(false);
   const [selectedWorkerProfile, setSelectedWorkerProfile] = useState<any>(null);
   const [isLoadingWorkerProfile, setIsLoadingWorkerProfile] = useState(false);
@@ -601,6 +602,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const handleViewPostulations = async (post: any) => {
     setViewingPostulations(post);
+    setPostulationsSort('price_asc');
     setIsLoadingPostulations(true);
     try {
       const res = await fetch(`/api/jobs/postulations/${post.id_publi}`);
@@ -609,6 +611,14 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       setIsLoadingPostulations(false);
     }
   };
+
+  const sortedPostulations = React.useMemo(() => {
+    const list = [...postulations];
+    if (postulationsSort === 'price_asc') {
+      return list.sort((a, b) => Number(a.presupuesto || 0) - Number(b.presupuesto || 0));
+    }
+    return list.sort((a, b) => Number(b.trabajadores?.puntuacion || 0) - Number(a.trabajadores?.puntuacion || 0));
+  }, [postulations, postulationsSort]);
 
   const handleViewWorkerProfile = async (workerId: number) => {
     setSelectedWorkerProfile(null);
@@ -764,16 +774,26 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     <h3 className="text-xl font-bold">Presupuestos Recibidos</h3>
                     <p className="text-xs text-slate-400 mt-1">{viewingPostulations.descripcion_publi}</p>
                   </div>
-                  <Button variant="ghost" onClick={() => setViewingPostulations(null)}>
-                    <ChevronLeft className="w-4 h-4 mr-2"/> Volver
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <select
+                      className="input-soft text-xs py-2"
+                      value={postulationsSort}
+                      onChange={e => setPostulationsSort(e.target.value as 'price_asc' | 'rating_desc')}
+                    >
+                      <option value="price_asc">Ordenar: Menor precio</option>
+                      <option value="rating_desc">Ordenar: Mejor calificacion</option>
+                    </select>
+                    <Button variant="ghost" onClick={() => setViewingPostulations(null)}>
+                      <ChevronLeft className="w-4 h-4 mr-2"/> Volver
+                    </Button>
+                  </div>
                 </div>
 
                 {isLoadingPostulations ? (
                   <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary"/></div>
-                ) : postulations.length > 0 ? (
+                ) : sortedPostulations.length > 0 ? (
                   <div className="space-y-4">
-                    {postulations.map((p: any) => (
+                    {sortedPostulations.map((p: any) => (
                       <Card key={p.id_postulacion} className="p-5 border border-slate-100 hover:border-primary/30 transition-all">
                         <div className="flex justify-between items-start mb-4">
                           <div className="flex items-center gap-3">
