@@ -995,7 +995,13 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const loadPosts = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/jobs/posts');
+      const workerId = Number(user?.id_trabajador);
+      if (!Number.isFinite(workerId)) {
+        setForumPosts([]);
+        return;
+      }
+
+      const res = await fetch(`/api/jobs/posts?workerId=${workerId}`);
       if (res.ok) setForumPosts(await res.json());
     } finally {
       setIsLoading(false);

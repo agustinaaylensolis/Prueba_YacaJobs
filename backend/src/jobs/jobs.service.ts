@@ -129,13 +129,34 @@ export class JobsService {
     return post;
   }
 
-  async getPosts(clientId?: number, tradeId?: number) {
+  async getPosts(clientId?: number, tradeId?: number, workerId?: number) {
+    let workerTradeIds: number[] = [];
+
+    if (workerId) {
+      const { data: workerTrades, error: workerTradesError } = await this.client
+        .from('oficio_del_trabajador')
+        .select('id_oficio')
+        .eq('id_trabajador', workerId);
+
+      if (workerTradesError) throw new BadRequestException(workerTradesError.message);
+
+      workerTradeIds = (workerTrades || [])
+        .map((item: any) => Number(item.id_oficio))
+        .filter((id: number) => Number.isFinite(id));
+
+      if (workerTradeIds.length === 0) {
+        return [];
+      }
+    }
+
     let query = this.client
       .from('publicaciones')
       .select('*, oficios(*), clientes(*)');
 
     if (clientId) query = query.eq('id_cliente', clientId);
     if (tradeId) query = query.eq('id_oficio', tradeId);
+    if (workerTradeIds.length > 0) query = query.in('id_oficio', workerTradeIds);
+    if (workerId) query = query.eq('estado_publi', 'Abierta');
     
     query = query.order('fecha_publi', { ascending: false });
 
