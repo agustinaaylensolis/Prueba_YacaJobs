@@ -208,16 +208,14 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
 
       if (!formData.phone.trim()) errors.phone = 'El celular es obligatorio.';
 
-      if (role === UserRole.CLIENT) {
-        if (!formData.age.trim()) {
-          errors.age = 'La edad es obligatoria.';
-        } else {
-          const ageNumber = Number(formData.age);
-          if (Number.isNaN(ageNumber)) {
-            errors.age = 'La edad debe ser numerica.';
-          } else if (ageNumber < 18) {
-            errors.age = 'La edad debe ser mayor o igual a 18 anios.';
-          }
+      if (!formData.age.trim()) {
+        errors.age = 'La edad es obligatoria.';
+      } else {
+        const ageNumber = Number(formData.age);
+        if (Number.isNaN(ageNumber)) {
+          errors.age = 'La edad debe ser numerica.';
+        } else if (ageNumber < 18) {
+          errors.age = 'La edad debe ser mayor o igual a 18 anios.';
         }
       }
 
@@ -358,6 +356,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
           contraseña_trabajador: formData.password,
           nombre_y_apellido_trabajador: formData.name,
           dni_trabajador: Number(formData.dni),
+          edad_trabajador: Number(formData.age),
           nro_celular_trabajador: formData.phone,
           url_dni_frente_trabajador: 'https://placeholder.com/f',
           url_dni_reverso_trabajador: 'https://placeholder.com/r',
@@ -474,12 +473,10 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                      {fieldErrors.dni && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dni}</p>}
                    </div>
                    <div className="flex gap-4">
-                     {role === UserRole.CLIENT && (
-                       <div className="flex-1">
-                         <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
-                         {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
-                       </div>
-                     )}
+                     <div className="flex-1">
+                       <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
+                       {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
+                     </div>
                      <div className="flex-1">
                        <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
                        {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
