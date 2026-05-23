@@ -208,16 +208,14 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
 
       if (!formData.phone.trim()) errors.phone = 'El celular es obligatorio.';
 
-      if (role === UserRole.CLIENT) {
-        if (!formData.age.trim()) {
-          errors.age = 'La edad es obligatoria.';
-        } else {
-          const ageNumber = Number(formData.age);
-          if (Number.isNaN(ageNumber)) {
-            errors.age = 'La edad debe ser numerica.';
-          } else if (ageNumber < 18) {
-            errors.age = 'La edad debe ser mayor o igual a 18 anios.';
-          }
+      if (!formData.age.trim()) {
+        errors.age = 'La edad es obligatoria.';
+      } else {
+        const ageNumber = Number(formData.age);
+        if (Number.isNaN(ageNumber)) {
+          errors.age = 'La edad debe ser numerica.';
+        } else if (ageNumber < 18) {
+          errors.age = 'La edad debe ser mayor o igual a 18 anios.';
         }
       }
 
@@ -295,6 +293,15 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
     return { fieldErrors: nextFieldErrors, message: normalizedMessage };
   };
 
+  const normalizeAuthUser = (payload: any) => {
+    const rawUser = payload?.user?.user ?? payload?.user;
+    return {
+      ...rawUser,
+      role,
+      name: rawUser?.nombre_y_apellido_cliente || rawUser?.nombre_y_apellido_trabajador,
+    };
+  };
+
   const handleBack = () => {
     setFieldErrors({});
     if (!role) {
@@ -331,7 +338,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         const result = await response.json();
         setFieldErrors({});
         setMessage({text: '¡Ingreso exitoso!', type: 'success'});
-        setTimeout(() => onAuth({ ...result.user, role, name: result.user.nombre_y_apellido_cliente || result.user.nombre_y_apellido_trabajador }), 1000);
+        setTimeout(() => onAuth(normalizeAuthUser(result)), 1000);
       } else {
         // Registration
         const endpoint = role === UserRole.CLIENT ? '/api/auth/register/client' : '/api/auth/register/worker';
@@ -349,6 +356,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
           contraseña_trabajador: formData.password,
           nombre_y_apellido_trabajador: formData.name,
           dni_trabajador: Number(formData.dni),
+          edad_trabajador: Number(formData.age),
           nro_celular_trabajador: formData.phone,
           url_dni_frente_trabajador: 'https://placeholder.com/f',
           url_dni_reverso_trabajador: 'https://placeholder.com/r',
@@ -370,7 +378,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         const result = await response.json();
         setFieldErrors({});
         setMessage({text: '¡Registro completado!', type: 'success'});
-        setTimeout(() => onAuth({ ...result.user, role, name: result.user.nombre_y_apellido_cliente || result.user.nombre_y_apellido_trabajador }), 1000);
+        setTimeout(() => onAuth(normalizeAuthUser(result)), 1000);
       }
     } catch (error: any) {
       const { fieldErrors: backendFieldErrors, message: backendMessage } = parseBackendValidation(error);
@@ -465,12 +473,10 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                      {fieldErrors.dni && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dni}</p>}
                    </div>
                    <div className="flex gap-4">
-                     {role === UserRole.CLIENT && (
-                       <div className="flex-1">
-                         <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
-                         {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
-                       </div>
-                     )}
+                     <div className="flex-1">
+                       <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
+                       {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
+                     </div>
                      <div className="flex-1">
                        <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
                        {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
@@ -539,11 +545,16 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [workerProfileError, setWorkerProfileError] = useState('');
 
   const loadInitial = async () => {
-    const [tRes, pRes] = await Promise.all([
-      fetch('/api/jobs/trades'),
-      fetch(`/api/jobs/posts?clientId=${user.id_cliente}`)
-    ]);
+    const clientId = Number(user?.id_cliente);
+    const tRes = await fetch('/api/jobs/trades');
     if (tRes.ok) setTrades(await tRes.json());
+
+    if (!Number.isFinite(clientId)) {
+      setPosts([]);
+      return;
+    }
+
+    const pRes = await fetch(`/api/jobs/posts?clientId=${clientId}`);
     if (pRes.ok) setPosts(await pRes.json());
   };
 
@@ -1051,7 +1062,13 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const loadPosts = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/jobs/posts');
+      const workerId = Number(user?.id_trabajador);
+      if (!Number.isFinite(workerId)) {
+        setForumPosts([]);
+        return;
+      }
+
+      const res = await fetch(`/api/jobs/posts?workerId=${workerId}`);
       if (res.ok) setForumPosts(await res.json());
     } finally {
       setIsLoading(false);
