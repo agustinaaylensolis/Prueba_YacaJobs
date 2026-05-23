@@ -525,7 +525,8 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [posts, setPosts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isPosting, setIsPosting] = useState(false);
-  const [newPost, setNewPost] = useState({ tradeId: '', description: '', urgency: 'Baja' });
+  const [newPost, setNewPost] = useState({ tradeId: '', description: '', urgency: '' });
+  const [postErrors, setPostErrors] = useState<{ tradeId?: string; urgency?: string; description?: string }>({});
   const [profileData, setProfileData] = useState({ ...user });
   const [isSaving, setIsSaving] = useState(false);
   const [profileNotice, setProfileNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
@@ -548,12 +549,42 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   React.useEffect(() => { loadInitial(); }, []);
 
+  const maxPostDescriptionLength = 500;
+
+  const clearPostError = (field: 'tradeId' | 'urgency' | 'description') => {
+    setPostErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const validateNewPost = () => {
+    const errors: Record<string, string> = {};
+    if (!newPost.tradeId) errors.tradeId = 'Selecciona un oficio válido.';
+    if (!newPost.urgency) errors.urgency = 'Selecciona una prioridad válida.';
+    if (!newPost.description.trim()) {
+      errors.description = 'La descripción es obligatoria.';
+    } else if (newPost.description.length > maxPostDescriptionLength) {
+      errors.description = `La descripción no puede superar ${maxPostDescriptionLength} caracteres.`;
+    }
+    return errors;
+  };
+
   const handleSearch = async (tradeId?: number) => {
     const res = await fetch(`/api/jobs/workers${tradeId ? `?tradeId=${tradeId}` : ''}`);
     if (res.ok) setSearchResults(await res.json());
   };
 
   const handleCreatePost = async () => {
+    const errors = validateNewPost();
+    if (Object.keys(errors).length > 0) {
+      setPostErrors(errors);
+      return;
+    }
+
+    setPostErrors({});
     const res = await fetch('/api/jobs/post', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -566,6 +597,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     });
     if (res.ok) {
       setIsPosting(false);
+      setNewPost({ tradeId: '', description: '', urgency: '' });
       loadInitial();
     }
   };
@@ -724,23 +756,58 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             {isPosting && (
               <Card className="p-6 space-y-4 bg-primary/5 border-primary/20">
                  <div className="grid grid-cols-2 gap-4">
-                    <select className="input-soft" value={newPost.tradeId} onChange={e => setNewPost({...newPost, tradeId: e.target.value})}>
-                       <option value="">Oficio Requerido</option>
-                       {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
-                    </select>
-                    <select className="input-soft" value={newPost.urgency} onChange={e => setNewPost({...newPost, urgency: e.target.value})}>
-                       <option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option>
-                    </select>
+                    <div>
+                      <select
+                        className={`input-soft ${postErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`}
+                        value={newPost.tradeId}
+                        onChange={e => {
+                          setNewPost((prev) => ({ ...prev, tradeId: e.target.value }));
+                          clearPostError('tradeId');
+                        }}
+                      >
+                        <option value="">Selecciona un oficio</option>
+                        {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
+                      </select>
+                      {postErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.tradeId}</p>}
+                    </div>
+                    <div>
+                      <select
+                        className={`input-soft ${postErrors.urgency ? 'border-red-400 focus:border-red-500' : ''}`}
+                        value={newPost.urgency}
+                        onChange={e => {
+                          setNewPost((prev) => ({ ...prev, urgency: e.target.value }));
+                          clearPostError('urgency');
+                        }}
+                      >
+                        <option value="">Selecciona prioridad</option>
+                        <option value="Baja">Baja</option>
+                        <option value="Media">Media</option>
+                        <option value="Alta">Alta</option>
+                      </select>
+                      {postErrors.urgency && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.urgency}</p>}
+                    </div>
                  </div>
-                 <textarea 
-                   className="input-soft min-h-32" 
-                   placeholder="Describe qué necesitas (ej: Tengo una filtración en el baño...)" 
-                   value={newPost.description} 
-                   onChange={e => setNewPost({...newPost, description: e.target.value})} 
-                 />
+                 <div className="relative">
+                   <textarea
+                     className={`input-soft min-h-32 resize-none ${postErrors.description ? 'border-red-400 focus:border-red-500' : ''}`}
+                     placeholder="Describe qué necesitas (ej: Tengo una filtración en el baño...)"
+                     value={newPost.description}
+                     maxLength={maxPostDescriptionLength}
+                     onChange={e => {
+                       const value = e.target.value.slice(0, maxPostDescriptionLength);
+                       setNewPost((prev) => ({ ...prev, description: value }));
+                       clearPostError('description');
+                     }}
+                   />
+                   <div className="flex justify-between items-center mt-2 text-xs text-slate-500">
+                     <span className=""></span>
+                     <span className="font-semibold">{newPost.description.length} / {maxPostDescriptionLength}</span>
+                   </div>
+                   {postErrors.description && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.description}</p>}
+                 </div>
                  <div className="flex justify-end gap-2">
                     <Button variant="ghost" onClick={() => setIsPosting(false)}>Cancelar</Button>
-                    <Button onClick={handleCreatePost} disabled={!newPost.description || !newPost.tradeId}>Publicar</Button>
+                    <Button onClick={handleCreatePost} disabled={isSaving || !newPost.description.trim() || !newPost.tradeId || !newPost.urgency}>Publicar</Button>
                  </div>
               </Card>
             )}
