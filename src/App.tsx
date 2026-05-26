@@ -814,6 +814,11 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       {postErrors.urgency && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.urgency}</p>}
                     </div>
                  </div>
+                 {/* Mensajes visibles justo debajo de los botones/selects */}
+                 <div className="mt-2">
+                   {postErrors.tradeId && <p className="text-xs text-red-600 font-semibold">Falta seleccionar oficio</p>}
+                   {postErrors.urgency && <p className="text-xs text-red-600 font-semibold">Falta seleccionar prioridad</p>}
+                 </div>
                  <div className="relative">
                    <textarea
                      className={`input-soft min-h-32 resize-none ${postErrors.description ? 'border-red-400 focus:border-red-500' : ''}`}
