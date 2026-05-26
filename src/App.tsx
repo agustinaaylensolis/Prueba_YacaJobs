@@ -533,6 +533,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [isPosting, setIsPosting] = useState(false);
   const [newPost, setNewPost] = useState({ tradeId: '', description: '', urgency: '' });
   const [postErrors, setPostErrors] = useState<{ tradeId?: string; urgency?: string; description?: string }>({});
+  const [postNotice, setPostNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
   const [profileData, setProfileData] = useState({ ...user });
   const [isSaving, setIsSaving] = useState(false);
   const [profileNotice, setProfileNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
@@ -567,6 +568,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       if (!prev[field]) return prev;
       const next = { ...prev };
       delete next[field];
+      setPostNotice({ text: '', type: null });
       return next;
     });
   };
@@ -592,6 +594,14 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     const errors = validateNewPost();
     if (Object.keys(errors).length > 0) {
       setPostErrors(errors);
+      // Construir mensaje claro de campos faltantes
+      const labels: Record<string, string> = {
+        tradeId: 'Oficio',
+        urgency: 'Prioridad',
+        description: 'Descripción'
+      };
+      const missing = Object.keys(errors).map(k => labels[k] || k);
+      setPostNotice({ text: `Completa los siguientes campos: ${missing.join(', ')}.`, type: 'error' });
       return;
     }
 
@@ -609,6 +619,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     if (res.ok) {
       setIsPosting(false);
       setNewPost({ tradeId: '', description: '', urgency: '' });
+      setPostNotice({ text: '', type: null });
       loadInitial();
     }
   };
@@ -766,6 +777,11 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
             {isPosting && (
               <Card className="p-6 space-y-4 bg-primary/5 border-primary/20">
+                 {postNotice.text && (
+                   <div className={`rounded-2xl p-3 text-sm font-bold text-center ${postNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                     {postNotice.text}
+                   </div>
+                 )}
                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <select
