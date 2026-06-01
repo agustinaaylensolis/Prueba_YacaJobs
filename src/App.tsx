@@ -4,6 +4,7 @@ import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, 
 import { COLORS } from './constants';
 import { UserRole } from './types';
 import { supabase } from './lib/supabase';
+import { SearchStrategyFactory } from './strategies/SearchStrategyFactory';
 
 // --- Sub-components ---
 
@@ -586,8 +587,16 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   };
 
   const handleSearch = async (tradeId?: number) => {
-    const res = await fetch(`/api/jobs/workers${tradeId ? `?tradeId=${tradeId}` : ''}`);
-    if (res.ok) setSearchResults(await res.json());
+    // Strategy Pattern: Seleccionar estrategia según si hay tradeId
+    const strategyType = tradeId ? 'by-trade' : 'all-workers';
+    const strategy = SearchStrategyFactory.create(strategyType);
+    try {
+      const results = await strategy.execute({ tradeId });
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Error en búsqueda:', error);
+      setSearchResults([]);
+    }
   };
 
   const handleCreatePost = async () => {
@@ -679,10 +688,10 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     setWorkerProfileError('');
     setIsLoadingWorkerProfile(true);
     try {
-      const res = await fetch(`/api/jobs/workers/${workerId}`);
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.message || 'No se pudo cargar el perfil.');
-      setSelectedWorkerProfile(payload);
+      // Strategy Pattern: Usar estrategia de carga de perfil
+      const strategy = SearchStrategyFactory.create('profile');
+      const profile = await strategy.execute({ workerId });
+      setSelectedWorkerProfile(profile);
     } catch (error: any) {
       setWorkerProfileError(error.message || 'No se pudo cargar el perfil.');
     } finally {

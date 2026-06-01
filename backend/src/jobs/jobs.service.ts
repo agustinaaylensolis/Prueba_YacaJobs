@@ -222,4 +222,30 @@ export class JobsService {
     if (error) throw new BadRequestException(error.message);
     return data;
   }
+
+  async deletePost(postId: number, clientId: number) {
+    // 1. Verificar que la publicación exista y pertenezca al cliente
+    const { data: post, error: fetchError } = await this.client
+      .from('publicaciones')
+      .select('id_cliente')
+      .eq('id_publi', postId)
+      .maybeSingle();
+
+    if (fetchError) throw new BadRequestException(fetchError.message);
+    if (!post) throw new BadRequestException('La publicación no existe');
+    
+    if (post.id_cliente !== clientId) {
+      throw new BadRequestException('No tienes permiso para eliminar esta publicación');
+    }
+
+    // 2. Proceder con la eliminación (el CASCADE se encarga de las postulaciones)
+    const { error: deleteError } = await this.client
+      .from('publicaciones')
+      .delete()
+      .eq('id_publi', postId);
+
+    if (deleteError) throw new BadRequestException(deleteError.message);
+    
+    return { success: true, message: 'Publicación eliminada correctamente' };
+  }
 }

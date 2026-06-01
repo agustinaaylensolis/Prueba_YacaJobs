@@ -1,0 +1,160 @@
+```mermaid
+classDiagram
+  %% Interfaces / Strategies
+  class SearchStrategy {
+    <<interface>>
+    +execute(params: any): Promise<any>
+  }
+  class SearchAllWorkersStrategy {
+    +execute(params: any): Promise<any>
+  }
+  class SearchByTradeStrategy {
+    +execute(params: any): Promise<any>
+  }
+  class SearchProfileStrategy {
+    +execute(params: any): Promise<any>
+  }
+  class SearchStrategyFactory {
+    +static create(type: string): SearchStrategy
+  }
+
+  %% Strategy relationships
+  SearchAllWorkersStrategy --|> SearchStrategy
+  SearchByTradeStrategy --|> SearchStrategy
+  SearchProfileStrategy --|> SearchStrategy
+  SearchStrategyFactory --> SearchAllWorkersStrategy : creates
+  SearchStrategyFactory --> SearchByTradeStrategy : creates
+  SearchStrategyFactory --> SearchProfileStrategy : creates
+
+  %% Backend: Supabase service/module
+  class SupabaseService {
+    -logger: Logger
+    -clientInstance: SupabaseClient
+    +constructor(configService: ConfigService)
+    +getClient(): SupabaseClient
+  }
+  class SupabaseModule {
+    <<module>>
+  }
+  SupabaseModule --> SupabaseService : provides
+
+  %% Auth domain
+  class RegisterClientDto {
+    +nombre_y_apellido_cliente: string
+    +correo_cliente: string
+    +contraseña_cliente: string
+    +dni_cliente: number
+    +edad_cliente: number
+    +celular_cliente: string
+    +url_dni_frente?: string
+    +url_dni_dorso?: string
+  }
+  class RegisterWorkerDto {
+    +nombre_y_apellido_trabajador: string
+    +correo_trabajador: string
+    +contraseña_trabajador: string
+    +dni_trabajador: number
+    +edad_trabajador: number
+    +nro_celular_trabajador: string
+    +id_oficios: number[]
+    +url_dni_frente_trabajador: string
+    +url_dni_reverso_trabajador: string
+    +url_certificado_buena_conducta: string
+    +monotributo_trabajador?: boolean
+    +matricula_trabajador?: string
+  }
+  class AuthService {
+    -supabaseService: SupabaseService
+    +constructor(supabaseService: SupabaseService)
+    +registerClient(dto: RegisterClientDto)
+    +registerWorker(dto: RegisterWorkerDto)
+    +login(email: string, pass: string, role: 'CLIENT'|'WORKER')
+    +testDirectInsert()
+  }
+  class AuthController {
+    -authService: AuthService
+    +registerClient(registerDto: RegisterClientDto)
+    +registerWorker(registerDto: RegisterWorkerDto)
+    +login(loginDto: {correo, contraseña, rol})
+    +testDbPost()
+    +testDbGet()
+    +ping()
+  }
+  class AuthModule {
+    <<module>>
+  }
+
+  %% Jobs domain
+  class CreatePostDto {
+    +descripcion_publi: string
+    +tipo_urgencia: string
+    +id_oficio: number
+    +id_cliente?: number
+  }
+  class PostulateDto {
+    +id_publi: number
+    +id_trabajador?: number
+    +presupuesto: number
+    +descripcion_postulacion?: string
+  }
+  class JobsService {
+    -supabaseService: SupabaseService
+    +constructor(supabaseService: SupabaseService)
+    +getTrades()
+    +getWorkers(tradeId?: number)
+    +getWorkerProfile(workerId: number)
+    +createPost(data: any)
+    +getPosts(clientId?: number, tradeId?: number, workerId?: number)
+    +postulate(data: any)
+    +updateProfile(role: 'CLIENT'|'WORKER', id: number, updates: any)
+    +getPostulations(postId: number)
+    +deletePost(postId: number, clientId: number)
+  }
+  class JobsController {
+    -jobsService: JobsService
+    +getTrades()
+    +getWorkers(tradeId?: string)
+    +getWorkerProfile(workerId: string)
+    +createPost(data: CreatePostDto)
+    +getPosts(clientId?: string, tradeId?: string, workerId?: string)
+    +postulate(data: PostulateDto)
+    +updateProfile(data: {role, id, updates})
+    +getPostulations(postId: string)
+    +deletePost(id: string, clientId: string)
+  }
+  class JobsModule {
+    <<module>>
+  }
+
+  %% App module
+  class AppModule {
+    <<module>>
+  }
+
+  %% Module / DI relationships (associations)
+  AppModule --> SupabaseModule : imports
+  AppModule --> AuthModule : imports
+  AppModule --> JobsModule : imports
+
+  AuthModule --> SupabaseModule : imports
+  JobsModule --> SupabaseModule : imports
+
+  AuthController --> AuthService : injects
+  AuthService --> SupabaseService : injects
+
+  JobsController --> JobsService : injects
+  JobsService --> SupabaseService : injects
+
+  %% DTO associations (used by controllers/services)
+  AuthController ..> RegisterClientDto : uses
+  AuthController ..> RegisterWorkerDto : uses
+  JobsController ..> CreatePostDto : uses
+  JobsController ..> PostulateDto : uses
+
+  %% Notes: strategies included (frontend classes, not React components)
+  note right of SearchStrategy
+    Frontend Strategy classes:
+    - Encapsulan fetch a endpoints existentes
+    - No modifican backend
+  end note
+```

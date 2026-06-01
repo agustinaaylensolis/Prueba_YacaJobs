@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, BadRequestException, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, Delete, BadRequestException, Inject, ForbiddenException } from '@nestjs/common';
 import { JobsService } from './jobs.service.js';
 import { PostulateDto } from './dto/postulate.dto.js';
 import { CreatePostDto } from './dto/create-post.dto.js';
@@ -83,5 +83,24 @@ export class JobsController {
   @Get('postulations/:postId')
   async getPostulations(@Param('postId') postId: string) {
     return this.jobsService.getPostulations(parseInt(postId));
+  }
+
+  @Delete('posts/:id')
+  async deletePost(@Param('id') id: string, @Query('clientId') clientId: string) {
+    const parsedPostId = parseInt(id, 10);
+    const parsedClientId = parseInt(clientId, 10);
+
+    if (Number.isNaN(parsedPostId) || Number.isNaN(parsedClientId)) {
+      throw new BadRequestException('ID de publicación o cliente inválido');
+    }
+
+    try {
+      return await this.jobsService.deletePost(parsedPostId, parsedClientId);
+    } catch (error: any) {
+      if (error.message.includes('permiso')) {
+        throw new ForbiddenException(error.message);
+      }
+      throw error;
+    }
   }
 }
