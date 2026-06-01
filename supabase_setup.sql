@@ -92,6 +92,65 @@ CREATE TABLE IF NOT EXISTS valoraciones (
     fecha_valoracion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 8. Tabla de Conversaciones Cliente-Trabajador
+CREATE TABLE IF NOT EXISTS conversaciones (
+    id_conversacion SERIAL PRIMARY KEY,
+    id_cliente INT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,
+    id_trabajador INT NOT NULL REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
+    id_publi INT REFERENCES publicaciones(id_publi) ON DELETE SET NULL,
+    id_postulacion INT REFERENCES postulaciones(id_postulacion) ON DELETE SET NULL,
+    estado_conversacion VARCHAR(20) NOT NULL DEFAULT 'Activa',
+    ultimo_mensaje_preview TEXT,
+    ultima_actividad TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id_cliente, id_trabajador, id_publi)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversaciones_cliente ON conversaciones (id_cliente);
+CREATE INDEX IF NOT EXISTS idx_conversaciones_trabajador ON conversaciones (id_trabajador);
+CREATE INDEX IF NOT EXISTS idx_conversaciones_ultima_actividad ON conversaciones (ultima_actividad DESC);
+
+-- 9. Tabla de Mensajes Internos
+CREATE TABLE IF NOT EXISTS mensajes (
+    id_mensaje SERIAL PRIMARY KEY,
+    id_conversacion INT NOT NULL REFERENCES conversaciones(id_conversacion) ON DELETE CASCADE,
+    id_emisor_cliente INT REFERENCES clientes(id_cliente) ON DELETE CASCADE,
+    id_emisor_trabajador INT REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
+    contenido_mensaje TEXT NOT NULL,
+    leido_por_cliente_at TIMESTAMP WITH TIME ZONE,
+    leido_por_trabajador_at TIMESTAMP WITH TIME ZONE,
+    fecha_mensaje TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_emisor_unico CHECK (
+        (id_emisor_cliente IS NOT NULL AND id_emisor_trabajador IS NULL)
+        OR (id_emisor_cliente IS NULL AND id_emisor_trabajador IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_mensajes_conversacion_fecha ON mensajes (id_conversacion, fecha_mensaje DESC);
+
+-- 10. Tabla de Contrataciones
+CREATE TABLE IF NOT EXISTS contrataciones (
+    id_contratacion SERIAL PRIMARY KEY,
+    id_conversacion INT NOT NULL UNIQUE REFERENCES conversaciones(id_conversacion) ON DELETE CASCADE,
+    id_cliente INT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,
+    id_trabajador INT NOT NULL REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
+    estado_contratacion VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+    monto_acordado NUMERIC(12,2),
+    precio_final_acordado NUMERIC(12,2),
+    fecha_horario_acordado TIMESTAMP WITH TIME ZONE,
+    materiales_incluidos BOOLEAN,
+    direccion_o_zona TEXT,
+    condiciones_especiales TEXT,
+    detalle_acuerdo TEXT,
+    fecha_solicitud TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    fecha_confirmacion TIMESTAMP WITH TIME ZONE,
+    fecha_rechazo TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_contrataciones_cliente ON contrataciones (id_cliente);
+CREATE INDEX IF NOT EXISTS idx_contrataciones_trabajador ON contrataciones (id_trabajador);
+CREATE INDEX IF NOT EXISTS idx_contrataciones_estado ON contrataciones (estado_contratacion);
+
 -- Datos Iniciales de Oficios
 INSERT INTO oficios (nombre_oficio, especialidad_oficio) VALUES
 ('Carpintero', 'Muebles y aberturas'),

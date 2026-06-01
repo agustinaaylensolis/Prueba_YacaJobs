@@ -1,5 +1,11 @@
 import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { OpenConversationDto } from './dto/open-conversation.dto.js';
+import { SendMessageDto } from './dto/send-message.dto.js';
+import { ContractAction, UpdateContractStatusDto } from './dto/update-contract-status.dto.js';
+import { UpdateContractAgreementDto } from './dto/update-contract-agreement.dto.js';
+
+type UserRole = 'CLIENT' | 'WORKER';
 
 @Injectable()
 export class JobsService {
@@ -7,6 +13,340 @@ export class JobsService {
 
   private get client() {
     return this.supabaseService.getClient();
+  }
+
+  private normalizeRole(role: string): UserRole {
+    if (role === 'CLIENT' || role === 'WORKER') return role;
+    throw new BadRequestException('Rol invalido');
+  }
+
+  private async assertConversationAccess(conversationId: number, role: UserRole, userId: number) {
+    const participantField = role === 'CLIENT' ? 'id_cliente' : 'id_trabajador';
+    const { data, error } = await this.client
+      .from('conversaciones')
+      .select('*')
+      .eq('id_conversacion', conversationId)
+      .eq(participantField, userId)
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new BadRequestException('No tienes acceso a esta conversacion');
+    return data;
+  }
+
+  private async ensureContract(conversation: any) {
+    const { data: existingContract, error: contractError } = await this.client
+      .from('contrataciones')
+      .select('*')
+      .eq('id_conversacion', conversation.id_conversacion)
+      .maybeSingle();
+
+    if (contractError) throw new BadRequestException(contractError.message);
+    if (existingContract) return existingContract;
+
+    const { data: createdContract, error: createError } = await this.client
+      .from('contrataciones')
+      .insert({
+        id_conversacion: conversation.id_conversacion,
+        id_cliente: conversation.id_cliente,
+        id_trabajador: conversation.id_trabajador,
+        estado_contratacion: 'Pendiente',
+      })
+      .select()
+      .single();
+
+    if (createError) throw new BadRequestException(createError.message);
+    return createdContract;
+  }
+
+  async openConversation(data: OpenConversationDto) {
+    const clientId = Number(data.clientId);
+    const workerId = Number(data.workerId);
+    const publicationId = data.publicationId ? Number(data.publicationId) : undefined;
+    const postulationId = data.postulationId ? Number(data.postulationId) : undefined;
+
+    if (!Number.isFinite(clientId) || !Number.isFinite(workerId)) {
+      throw new BadRequestException('Datos numericos invalidos para abrir la conversacion');
+    }
+
+    let query = this.client
+      .from('conversaciones')
+      .select('*')
+      .eq('id_cliente', clientId)
+      .eq('id_trabajador', workerId);
+
+    if (Number.isFinite(publicationId as number)) {
+      query = query.eq('id_publi', publicationId as number);
+    } else {
+      query = query.is('id_publi', null);
+    }
+
+    if (Number.isFinite(postulationId as number)) {
+      query = query.eq('id_postulacion', postulationId as number);
+    }
+
+    const { data: existingConversation, error: existingError } = await query.maybeSingle();
+    if (existingError) throw new BadRequestException(existingError.message);
+
+    const conversation = existingConversation || await (async () => {
+      const { data: createdConversation, error: createError } = await this.client
+        .from('conversaciones')
+        .insert({
+          id_cliente: clientId,
+          id_trabajador: workerId,
+          id_publi: publicationId ?? null,
+          id_postulacion: postulationId ?? null,
+          estado_conversacion: 'Activa',
+          ultima_actividad: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (createError) throw new BadRequestException(createError.message);
+      return createdConversation;
+    })();
+
+    const contract = await this.ensureContract(conversation);
+    return { conversation, contract };
+  }
+
+  async getConversations(role: UserRole, userId: number) {
+    const participantField = role === 'CLIENT' ? 'id_cliente' : 'id_trabajador';
+    const { data: conversations, error } = await this.client
+      .from('conversaciones')
+      .select('*')
+      .eq(participantField, userId)
+      .order('ultima_actividad', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+
+    const enriched = await Promise.all((conversations || []).map(async (conversation: any) => {
+      const [lastMessageResult, unreadCountResult, contractResult] = await Promise.all([
+        this.client
+          .from('mensajes')
+          .select('*')
+          .eq('id_conversacion', conversation.id_conversacion)
+          .order('fecha_mensaje', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        this.client
+          .from('mensajes')
+          .select('id_mensaje', { count: 'exact', head: true })
+          .eq('id_conversacion', conversation.id_conversacion)
+          .not(role === 'CLIENT' ? 'id_emisor_trabajador' : 'id_emisor_cliente', 'is', null)
+          .is(role === 'CLIENT' ? 'leido_por_cliente_at' : 'leido_por_trabajador_at', null),
+        this.client
+          .from('contrataciones')
+          .select('*')
+          .eq('id_conversacion', conversation.id_conversacion)
+          .maybeSingle(),
+      ]);
+
+      if (lastMessageResult.error) throw new BadRequestException(lastMessageResult.error.message);
+      if (unreadCountResult.error) throw new BadRequestException(unreadCountResult.error.message);
+      if (contractResult.error) throw new BadRequestException(contractResult.error.message);
+
+      return {
+        ...conversation,
+        last_message: lastMessageResult.data || null,
+        unread_count: unreadCountResult.count || 0,
+        contract: contractResult.data || null,
+      };
+    }));
+
+    return enriched;
+  }
+
+  async getMessages(conversationId: number, role: UserRole, userId: number) {
+    await this.assertConversationAccess(conversationId, role, userId);
+
+    const { data, error } = await this.client
+      .from('mensajes')
+      .select('*')
+      .eq('id_conversacion', conversationId)
+      .order('fecha_mensaje', { ascending: true });
+
+    if (error) throw new BadRequestException(error.message);
+
+    await this.markConversationAsRead(conversationId, role, userId);
+    return data;
+  }
+
+  async markConversationAsRead(conversationId: number, role: UserRole, userId: number) {
+    await this.assertConversationAccess(conversationId, role, userId);
+
+    const readColumn = role === 'CLIENT' ? 'leido_por_cliente_at' : 'leido_por_trabajador_at';
+    const senderColumn = role === 'CLIENT' ? 'id_emisor_trabajador' : 'id_emisor_cliente';
+
+    const { data, error } = await this.client
+      .from('mensajes')
+      .update({ [readColumn]: new Date().toISOString() })
+      .eq('id_conversacion', conversationId)
+      .not(senderColumn, 'is', null)
+      .is(readColumn, null)
+      .select('id_mensaje');
+
+    if (error) throw new BadRequestException(error.message);
+    return { success: true, updated: data?.length || 0 };
+  }
+
+  async sendMessage(conversationId: number, messageData: SendMessageDto) {
+    const senderRole = this.normalizeRole(messageData.senderRole);
+    const senderId = Number(messageData.senderId);
+    const content = String(messageData.content || '').trim();
+
+    if (!Number.isFinite(senderId) || !content) {
+      throw new BadRequestException('Datos invalidos para enviar el mensaje');
+    }
+
+    await this.assertConversationAccess(conversationId, senderRole, senderId);
+
+    const payload: any = {
+      id_conversacion: conversationId,
+      contenido_mensaje: content,
+    };
+
+    if (senderRole === 'CLIENT') {
+      payload.id_emisor_cliente = senderId;
+    } else {
+      payload.id_emisor_trabajador = senderId;
+    }
+
+    const { data: message, error } = await this.client
+      .from('mensajes')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    const { error: conversationUpdateError } = await this.client
+      .from('conversaciones')
+      .update({
+        ultimo_mensaje_preview: content.slice(0, 160),
+        ultima_actividad: new Date().toISOString(),
+      })
+      .eq('id_conversacion', conversationId);
+
+    if (conversationUpdateError) throw new BadRequestException(conversationUpdateError.message);
+
+    return message;
+  }
+
+  async getConversationContract(conversationId: number, role: UserRole, userId: number) {
+    await this.assertConversationAccess(conversationId, role, userId);
+
+    const { data, error } = await this.client
+      .from('contrataciones')
+      .select('*')
+      .eq('id_conversacion', conversationId)
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
+  }
+
+  async updateContractStatus(conversationId: number, data: UpdateContractStatusDto) {
+    const actorRole = this.normalizeRole(data.actorRole);
+    const actorId = Number(data.actorId);
+    await this.assertConversationAccess(conversationId, actorRole, actorId);
+
+    const { data: existingContract, error: contractError } = await this.client
+      .from('contrataciones')
+      .select('*')
+      .eq('id_conversacion', conversationId)
+      .maybeSingle();
+
+    if (contractError) throw new BadRequestException(contractError.message);
+    if (!existingContract) throw new BadRequestException('No existe una contratacion asociada a esta conversacion');
+
+    const now = new Date().toISOString();
+    const nextStatus = data.action === ContractAction.CONFIRM ? 'Confirmada' : 'Rechazada';
+
+    const updatePayload: Record<string, any> = {
+      estado_contratacion: nextStatus,
+      detalle_acuerdo: data.note || existingContract.detalle_acuerdo || null,
+      fecha_confirmacion: data.action === ContractAction.CONFIRM ? now : null,
+      fecha_rechazo: data.action === ContractAction.REJECT ? now : null,
+    };
+
+    const { data: updatedContract, error } = await this.client
+      .from('contrataciones')
+      .update(updatePayload)
+      .eq('id_contratacion', existingContract.id_contratacion)
+      .select('*')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    const { error: conversationError } = await this.client
+      .from('conversaciones')
+      .update({ estado_conversacion: 'Cerrada', ultima_actividad: now })
+      .eq('id_conversacion', conversationId);
+
+    if (conversationError) throw new BadRequestException(conversationError.message);
+
+    return updatedContract;
+  }
+
+  async updateContractAgreement(conversationId: number, data: UpdateContractAgreementDto) {
+    const actorRole = this.normalizeRole(data.actorRole);
+    const actorId = Number(data.actorId);
+    await this.assertConversationAccess(conversationId, actorRole, actorId);
+
+    const { data: existingContract, error: contractError } = await this.client
+      .from('contrataciones')
+      .select('*')
+      .eq('id_conversacion', conversationId)
+      .maybeSingle();
+
+    if (contractError) throw new BadRequestException(contractError.message);
+    if (!existingContract) throw new BadRequestException('No existe una contratacion asociada a esta conversacion');
+
+    const normalizedPrice = data.precioFinalAcordado === undefined || data.precioFinalAcordado === null
+      ? null
+      : Number(data.precioFinalAcordado);
+
+    if (normalizedPrice !== null && Number.isNaN(normalizedPrice)) {
+      throw new BadRequestException('precioFinalAcordado debe ser numerico');
+    }
+
+    const agreementPayload: Record<string, any> = {
+      precio_final_acordado: normalizedPrice,
+      monto_acordado: normalizedPrice,
+      fecha_horario_acordado: data.fechaHorarioAcordado || null,
+      materiales_incluidos: data.materialesIncluidos ?? null,
+      direccion_o_zona: data.direccionOZona || null,
+      condiciones_especiales: data.condicionesEspeciales || null,
+      detalle_acuerdo: data.detalleAcuerdo || null,
+    };
+
+    const { data: updatedContract, error } = await this.client
+      .from('contrataciones')
+      .update(agreementPayload)
+      .eq('id_contratacion', existingContract.id_contratacion)
+      .select('*')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    const previewParts = [
+      normalizedPrice !== null ? `Precio $${normalizedPrice}` : null,
+      data.fechaHorarioAcordado ? `Fecha ${data.fechaHorarioAcordado}` : null,
+      data.direccionOZona ? `Zona ${data.direccionOZona}` : null,
+    ].filter(Boolean);
+
+    const { error: conversationError } = await this.client
+      .from('conversaciones')
+      .update({
+        ultimo_mensaje_preview: previewParts.join(' | ') || 'Acuerdo actualizado',
+        ultima_actividad: new Date().toISOString(),
+      })
+      .eq('id_conversacion', conversationId);
+
+    if (conversationError) throw new BadRequestException(conversationError.message);
+
+    return updatedContract;
   }
 
   async getTrades() {
