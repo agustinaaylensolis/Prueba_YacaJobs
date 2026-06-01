@@ -2,6 +2,10 @@ import { Controller, Get, Post, Body, Query, Param, Delete, BadRequestException,
 import { JobsService } from './jobs.service.js';
 import { PostulateDto } from './dto/postulate.dto.js';
 import { CreatePostDto } from './dto/create-post.dto.js';
+import { OpenConversationDto } from './dto/open-conversation.dto.js';
+import { SendMessageDto } from './dto/send-message.dto.js';
+import { UpdateContractStatusDto } from './dto/update-contract-status.dto.js';
+import { UpdateContractAgreementDto } from './dto/update-contract-agreement.dto.js';
 
 @Controller('jobs')
 export class JobsController {
@@ -102,5 +106,103 @@ export class JobsController {
       }
       throw error;
     }
+  }
+
+  @Post('conversations/open')
+  async openConversation(@Body() data: OpenConversationDto) {
+    return this.jobsService.openConversation(data);
+  }
+
+  @Get('conversations')
+  async getConversations(@Query('role') role: 'CLIENT' | 'WORKER', @Query('userId') userId: string) {
+    const parsedUserId = parseInt(userId, 10);
+    if (!role || !['CLIENT', 'WORKER'].includes(role) || Number.isNaN(parsedUserId)) {
+      throw new BadRequestException('Datos inválidos para listar conversaciones');
+    }
+
+    return this.jobsService.getConversations(role, parsedUserId);
+  }
+
+  @Get('conversations/:conversationId/messages')
+  async getMessages(
+    @Param('conversationId') conversationId: string,
+    @Query('role') role: 'CLIENT' | 'WORKER',
+    @Query('userId') userId: string,
+  ) {
+    const parsedConversationId = parseInt(conversationId, 10);
+    const parsedUserId = parseInt(userId, 10);
+
+    if (!role || !['CLIENT', 'WORKER'].includes(role) || Number.isNaN(parsedConversationId) || Number.isNaN(parsedUserId)) {
+      throw new BadRequestException('Datos inválidos para obtener mensajes');
+    }
+
+    return this.jobsService.getMessages(parsedConversationId, role, parsedUserId);
+  }
+
+  @Post('conversations/:conversationId/messages')
+  async sendMessage(
+    @Param('conversationId') conversationId: string,
+    @Body() data: SendMessageDto,
+  ) {
+    const parsedConversationId = parseInt(conversationId, 10);
+    if (Number.isNaN(parsedConversationId)) {
+      throw new BadRequestException('ID de conversación inválido');
+    }
+
+    return this.jobsService.sendMessage(parsedConversationId, data);
+  }
+
+  @Post('conversations/:conversationId/read')
+  async markConversationAsRead(
+    @Param('conversationId') conversationId: string,
+    @Body() data: { role: 'CLIENT' | 'WORKER'; userId: number },
+  ) {
+    const parsedConversationId = parseInt(conversationId, 10);
+    if (Number.isNaN(parsedConversationId) || !data?.role || !['CLIENT', 'WORKER'].includes(data.role) || !data.userId) {
+      throw new BadRequestException('Datos inválidos para marcar lectura');
+    }
+
+    return this.jobsService.markConversationAsRead(parsedConversationId, data.role, Number(data.userId));
+  }
+
+  @Get('conversations/:conversationId/contract')
+  async getConversationContract(
+    @Param('conversationId') conversationId: string,
+    @Query('role') role: 'CLIENT' | 'WORKER',
+    @Query('userId') userId: string,
+  ) {
+    const parsedConversationId = parseInt(conversationId, 10);
+    const parsedUserId = parseInt(userId, 10);
+    if (Number.isNaN(parsedConversationId) || !role || !['CLIENT', 'WORKER'].includes(role) || Number.isNaN(parsedUserId)) {
+      throw new BadRequestException('ID de conversación inválido');
+    }
+
+    return this.jobsService.getConversationContract(parsedConversationId, role, parsedUserId);
+  }
+
+  @Post('conversations/:conversationId/contract/status')
+  async updateContractStatus(
+    @Param('conversationId') conversationId: string,
+    @Body() data: UpdateContractStatusDto,
+  ) {
+    const parsedConversationId = parseInt(conversationId, 10);
+    if (Number.isNaN(parsedConversationId)) {
+      throw new BadRequestException('ID de conversación inválido');
+    }
+
+    return this.jobsService.updateContractStatus(parsedConversationId, data);
+  }
+
+  @Post('conversations/:conversationId/contract/agreement')
+  async updateContractAgreement(
+    @Param('conversationId') conversationId: string,
+    @Body() data: UpdateContractAgreementDto,
+  ) {
+    const parsedConversationId = parseInt(conversationId, 10);
+    if (Number.isNaN(parsedConversationId)) {
+      throw new BadRequestException('ID de conversación inválido');
+    }
+
+    return this.jobsService.updateContractAgreement(parsedConversationId, data);
   }
 }
