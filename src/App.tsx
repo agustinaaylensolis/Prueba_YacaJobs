@@ -1328,10 +1328,20 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       {postErrors.urgency && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.urgency}</p>}
                     </div>
                  </div>
-                 {/* Mensajes visibles justo debajo de los botones/selects */}
-                 <div className="mt-2">
-                   {postErrors.tradeId && <p className="text-xs text-red-600 font-semibold">Falta seleccionar oficio</p>}
-                   {postErrors.urgency && <p className="text-xs text-red-600 font-semibold">Falta seleccionar prioridad</p>}
+                 {/* Indicadores de validación dinámica */}
+                 <div className="flex flex-wrap gap-4 p-3 bg-white/50 rounded-xl border border-primary/10">
+                   <div className="flex items-center gap-2">
+                     <div className={`w-2 h-2 rounded-full ${newPost.tradeId ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                     <span className={`text-xs font-bold ${newPost.tradeId ? 'text-green-600' : 'text-red-600'}`}>Oficio</span>
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <div className={`w-2 h-2 rounded-full ${newPost.urgency ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                     <span className={`text-xs font-bold ${newPost.urgency ? 'text-green-600' : 'text-red-600'}`}>Prioridad</span>
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <div className={`w-2 h-2 rounded-full ${newPost.description.trim() ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                     <span className={`text-xs font-bold ${newPost.description.trim() ? 'text-green-600' : 'text-red-600'}`}>Descripción</span>
+                   </div>
                  </div>
                  <div className="relative">
                    <textarea
