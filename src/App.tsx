@@ -1166,12 +1166,19 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [selectedConversation, setSelectedConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [openingConversationId, setOpeningConversationId] = useState<number | null>(null);
   const [unreadCountClient, setUnreadCountClient] = useState(0);
 
   const loadConversations = async () => {
     const res = await fetch(`/api/jobs/conversations?role=CLIENT&userId=${user.id_cliente}`);
     if (res.ok) setConversations(await res.json());
   };
+
+  React.useEffect(() => {
+    if (activeTab === 'messages') {
+      loadConversations();
+    }
+  }, [activeTab]);
 
   React.useEffect(() => {
     // inicializar conteo y actualizar cada 30s
@@ -1190,16 +1197,23 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   }, []);
 
   const openConversation = async (workerId: number) => {
+    setActiveTab('messages');
+    setOpeningConversationId(workerId);
     const res = await fetch('/api/jobs/conversations/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clientId: user.id_cliente, workerId })
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      setOpeningConversationId(null);
+      await loadConversations();
+      return;
+    }
     const payload = await res.json();
     const convo = payload.conversation || payload;
     setSelectedConversation(convo);
     await loadMessages(convo.id_conversacion);
     await loadConversations();
+    setOpeningConversationId(null);
   };
 
   const loadMessages = async (conversationId: number) => {
@@ -1329,6 +1343,12 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               <div className="md:col-span-2">
                 {selectedConversation ? (
                   <ConversationModal open={Boolean(selectedConversation)} conversation={selectedConversation} currentRole={UserRole.CLIENT} currentUserId={user.id_cliente} onClose={() => setSelectedConversation(null)} onSaved={loadConversations} />
+                ) : openingConversationId ? (
+                  <Card className="p-8 text-center text-slate-500 space-y-3">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
+                    <p className="font-bold">Abriendo conversación...</p>
+                    <p className="text-sm">Estamos creando o recuperando el chat con el trabajador seleccionado.</p>
+                  </Card>
                 ) : (
                   <Card className="p-8 text-center text-slate-400">Selecciona una conversación para ver el chat.</Card>
                 )}
