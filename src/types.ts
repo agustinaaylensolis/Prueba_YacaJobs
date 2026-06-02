@@ -37,11 +37,23 @@ export interface Proposal {
   createdAt: string;
 }
 
+export interface Rating {
+  id_valoracion: number;
+  puntuacion: number;
+  comentario?: string | null;
+  id_emisor_cliente: number;
+  id_receptor_trabajador: number;
+  fecha_valoracion: string;
+  // Campo adicional para el nombre del cliente que hace la valoración
+  nombre_cliente?: string;
+}
+
 export interface WorkerProfile extends User {
   dni: string;
   phone: string;
   hasLegalCheck: boolean;
   trades: Trade[];
   score: number;
+  totalRatings: number; // Nueva propiedad para la cantidad total de valoraciones
   certifications?: string;
 }

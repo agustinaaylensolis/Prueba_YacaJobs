@@ -1,161 +1,88 @@
--- Script SQL para YacaJobs - MVP Académico
--- Compatible con PostgreSQL (Supabase)
--- Basado en el Diccionario de Datos del Documento de Referencia
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
 
--- Extensión para IDs si se desea usar UUIDs (opcional, aquí usaré SERIAL por simplicidad académica)
--- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 1. Tabla de Oficios
-CREATE TABLE IF NOT EXISTS oficios (
-    id_oficio SERIAL PRIMARY KEY,
-    nombre_oficio VARCHAR(100) UNIQUE NOT NULL,
-    especialidad_oficio VARCHAR(100)
+CREATE TABLE public.oficios (
+  id_oficio integer NOT NULL DEFAULT nextval('oficios_id_oficio_seq'::regclass),
+  nombre_oficio character varying NOT NULL UNIQUE,
+  especialidad_oficio character varying,
+  CONSTRAINT oficios_pkey PRIMARY KEY (id_oficio)
 );
-
--- 2. Tabla de Clientes
-CREATE TABLE IF NOT EXISTS clientes (
-    id_cliente SERIAL PRIMARY KEY,
-    contraseña_cliente VARCHAR(100) NOT NULL,
-    nombre_y_apellido_cliente VARCHAR(100) NOT NULL,
-    dni_cliente INT UNIQUE NOT NULL,
-    edad_cliente INT NOT NULL,
-    correo_cliente VARCHAR(100) UNIQUE NOT NULL,
-    celular_cliente VARCHAR(20) NOT NULL,
-    url_foto_perfil TEXT,
-    url_dni_frente TEXT,
-    url_dni_dorso TEXT,
-    fecha_registro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.clientes (
+  id_cliente integer NOT NULL DEFAULT nextval('clientes_id_cliente_seq'::regclass),
+  contraseña_cliente character varying NOT NULL,
+  nombre_y_apellido_cliente character varying NOT NULL,
+  dni_cliente integer NOT NULL UNIQUE CHECK (dni_cliente >= 1000000 AND dni_cliente <= 99999999),
+  correo_cliente character varying NOT NULL UNIQUE,
+  celular_cliente character varying NOT NULL,
+  url_foto_perfil text,
+  url_dni_frente text,
+  url_dni_dorso text,
+  fecha_registro timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  edad_cliente integer,
+  CONSTRAINT clientes_pkey PRIMARY KEY (id_cliente)
 );
-
--- 3. Tabla de Trabajadores
-CREATE TABLE IF NOT EXISTS trabajadores (
-    id_trabajador SERIAL PRIMARY KEY,
-    contraseña_trabajador VARCHAR(100) NOT NULL,
-    nombre_y_apellido_trabajador VARCHAR(100) NOT NULL,
-    dni_trabajador INT UNIQUE NOT NULL,
-    edad_trabajador INT NOT NULL,
-    correo_trabajador VARCHAR(100) UNIQUE NOT NULL,
-    nro_celular_trabajador VARCHAR(20) NOT NULL,
-    constancia_policial BOOLEAN DEFAULT FALSE,
-    monotributo_trabajador TEXT, -- URL a imagen/PDF
-    matricula_trabajador VARCHAR(100),
-    certificado_trabajador TEXT, -- URL a imagen/PDF
-    url_foto_perfil TEXT,
-    url_dni_frente_trabajador TEXT,
-    url_dni_reverso_trabajador TEXT,
-    puntuacion DECIMAL(3,2) DEFAULT 0.00,
-    fecha_registro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.trabajadores (
+  id_trabajador integer NOT NULL DEFAULT nextval('trabajadores_id_trabajador_seq'::regclass),
+  contraseña_trabajador character varying NOT NULL,
+  nombre_y_apellido_trabajador character varying NOT NULL,
+  dni_trabajador integer NOT NULL UNIQUE,
+  correo_trabajador character varying NOT NULL UNIQUE,
+  nro_celular_trabajador character varying NOT NULL,
+  constancia_policial boolean DEFAULT false,
+  monotributo_trabajador text,
+  matricula_trabajador character varying,
+  certificado_trabajador text,
+  url_foto_perfil text,
+  url_dni_frente_trabajador text,
+  url_dni_reverso_trabajador text,
+  puntuacion numeric DEFAULT 0.00,
+  fecha_registro timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  edad_trabajador integer,
+  CONSTRAINT trabajadores_pkey PRIMARY KEY (id_trabajador)
 );
-
--- Compatibilidad para bases ya creadas sin edad
-ALTER TABLE clientes ADD COLUMN IF NOT EXISTS edad_cliente INT;
-ALTER TABLE trabajadores ADD COLUMN IF NOT EXISTS edad_trabajador INT;
-
--- 4. Tabla de Asociación Trabajador-Oficio (N a N)
-CREATE TABLE IF NOT EXISTS oficio_del_trabajador (
-    id_oficio INT REFERENCES oficios(id_oficio) ON DELETE CASCADE,
-    id_trabajador INT REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
-    PRIMARY KEY (id_oficio, id_trabajador)
+CREATE TABLE public.oficio_del_trabajador (
+  id_oficio integer NOT NULL,
+  id_trabajador integer NOT NULL,
+  CONSTRAINT oficio_del_trabajador_pkey PRIMARY KEY (id_oficio, id_trabajador),
+  CONSTRAINT oficio_del_trabajador_id_oficio_fkey FOREIGN KEY (id_oficio) REFERENCES public.oficios(id_oficio),
+  CONSTRAINT oficio_del_trabajador_id_trabajador_fkey FOREIGN KEY (id_trabajador) REFERENCES public.trabajadores(id_trabajador)
 );
-
--- 5. Tabla de Publicaciones (Foro de Presupuestos)
-CREATE TABLE IF NOT EXISTS publicaciones (
-    id_publi SERIAL PRIMARY KEY,
-    fecha_publi TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    tipo_urgencia VARCHAR(50) NOT NULL, -- 'Alta', 'Media', 'Baja'
-    descripcion_publi TEXT NOT NULL,
-    monotributo_publi BOOLEAN DEFAULT FALSE, -- Si requiere que el trabajador tenga monotributo
-    matricula_publi BOOLEAN DEFAULT FALSE,   -- Si requiere matrícula
-    certificado_publi BOOLEAN DEFAULT FALSE, -- Si requiere certificado
-    id_cliente INT REFERENCES clientes(id_cliente) ON DELETE CASCADE,
-    id_oficio INT REFERENCES oficios(id_oficio) ON DELETE SET NULL,
-    estado_publi VARCHAR(20) DEFAULT 'Abierta' -- 'Abierta', 'Cerrada', 'En Proceso'
+CREATE TABLE public.publicaciones (
+  id_publi integer NOT NULL DEFAULT nextval('publicaciones_id_publi_seq'::regclass),
+  fecha_publi timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  tipo_urgencia character varying NOT NULL,
+  descripcion_publi text NOT NULL,
+  monotributo_publi boolean DEFAULT false,
+  matricula_publi boolean DEFAULT false,
+  certificado_publi boolean DEFAULT false,
+  id_cliente integer,
+  id_oficio integer,
+  estado character varying DEFAULT 'Abierta'::character varying,
+  estado_publi character varying DEFAULT 'Abierta'::character varying,
+  CONSTRAINT publicaciones_pkey PRIMARY KEY (id_publi),
+  CONSTRAINT publicaciones_id_cliente_fkey FOREIGN KEY (id_cliente) REFERENCES public.clientes(id_cliente),
+  CONSTRAINT publicaciones_id_oficio_fkey FOREIGN KEY (id_oficio) REFERENCES public.oficios(id_oficio)
 );
-
--- 6. Tabla de Postulaciones (Presupuestos del Trabajador)
-CREATE TABLE IF NOT EXISTS postulaciones (
-    id_postulacion SERIAL PRIMARY KEY,
-    id_trabajador INT REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
-    id_publi INT REFERENCES publicaciones(id_publi) ON DELETE CASCADE,
-    presupuesto DECIMAL(12,2) NOT NULL,
-    descripcion_postulacion TEXT,
-    fecha_postulacion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.postulaciones (
+  id_postulacion integer NOT NULL DEFAULT nextval('postulaciones_id_postulacion_seq'::regclass),
+  id_trabajador integer,
+  id_publi integer,
+  presupuesto numeric NOT NULL,
+  materiales text,
+  descripcion_postulacion text,
+  fecha_postulacion timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT postulaciones_pkey PRIMARY KEY (id_postulacion),
+  CONSTRAINT postulaciones_id_trabajador_fkey FOREIGN KEY (id_trabajador) REFERENCES public.trabajadores(id_trabajador),
+  CONSTRAINT postulaciones_id_publi_fkey FOREIGN KEY (id_publi) REFERENCES public.publicaciones(id_publi)
 );
-
--- 7. Tabla de Reseñas/Calificaciones (Opcional pero recomendado para el Scoring)
-CREATE TABLE IF NOT EXISTS valoraciones (
-    id_valoracion SERIAL PRIMARY KEY,
-    puntuacion INT CHECK (puntuacion >= 1 AND puntuacion <= 5),
-    comentario TEXT,
-    id_emisor_cliente INT REFERENCES clientes(id_cliente),
-    id_receptor_trabajador INT REFERENCES trabajadores(id_trabajador),
-    fecha_valoracion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.valoraciones (
+  id_valoracion integer NOT NULL DEFAULT nextval('valoraciones_id_valoracion_seq'::regclass),
+  puntuacion integer NOT NULL CHECK (puntuacion >= 1 AND puntuacion <= 5),
+  comentario text CHECK (comentario IS NULL OR length(comentario) <= 500),
+  id_emisor_cliente integer NOT NULL,
+  id_receptor_trabajador integer NOT NULL,
+  fecha_valoracion timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT valoraciones_pkey PRIMARY KEY (id_valoracion),
+  CONSTRAINT valoraciones_id_emisor_cliente_fkey FOREIGN KEY (id_emisor_cliente) REFERENCES public.clientes(id_cliente),
+  CONSTRAINT valoraciones_id_receptor_trabajador_fkey FOREIGN KEY (id_receptor_trabajador) REFERENCES public.trabajadores(id_trabajador)
 );
-
--- 8. Tabla de Conversaciones Cliente-Trabajador
-CREATE TABLE IF NOT EXISTS conversaciones (
-    id_conversacion SERIAL PRIMARY KEY,
-    id_cliente INT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,
-    id_trabajador INT NOT NULL REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
-    id_publi INT REFERENCES publicaciones(id_publi) ON DELETE SET NULL,
-    id_postulacion INT REFERENCES postulaciones(id_postulacion) ON DELETE SET NULL,
-    estado_conversacion VARCHAR(20) NOT NULL DEFAULT 'Activa',
-    ultimo_mensaje_preview TEXT,
-    ultima_actividad TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (id_cliente, id_trabajador, id_publi)
-);
-
-CREATE INDEX IF NOT EXISTS idx_conversaciones_cliente ON conversaciones (id_cliente);
-CREATE INDEX IF NOT EXISTS idx_conversaciones_trabajador ON conversaciones (id_trabajador);
-CREATE INDEX IF NOT EXISTS idx_conversaciones_ultima_actividad ON conversaciones (ultima_actividad DESC);
-
--- 9. Tabla de Mensajes Internos
-CREATE TABLE IF NOT EXISTS mensajes (
-    id_mensaje SERIAL PRIMARY KEY,
-    id_conversacion INT NOT NULL REFERENCES conversaciones(id_conversacion) ON DELETE CASCADE,
-    id_emisor_cliente INT REFERENCES clientes(id_cliente) ON DELETE CASCADE,
-    id_emisor_trabajador INT REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
-    contenido_mensaje TEXT NOT NULL,
-    leido_por_cliente_at TIMESTAMP WITH TIME ZONE,
-    leido_por_trabajador_at TIMESTAMP WITH TIME ZONE,
-    fecha_mensaje TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT ck_emisor_unico CHECK (
-        (id_emisor_cliente IS NOT NULL AND id_emisor_trabajador IS NULL)
-        OR (id_emisor_cliente IS NULL AND id_emisor_trabajador IS NOT NULL)
-    )
-);
-
-CREATE INDEX IF NOT EXISTS idx_mensajes_conversacion_fecha ON mensajes (id_conversacion, fecha_mensaje DESC);
-
--- 10. Tabla de Contrataciones
-CREATE TABLE IF NOT EXISTS contrataciones (
-    id_contratacion SERIAL PRIMARY KEY,
-    id_conversacion INT NOT NULL UNIQUE REFERENCES conversaciones(id_conversacion) ON DELETE CASCADE,
-    id_cliente INT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,
-    id_trabajador INT NOT NULL REFERENCES trabajadores(id_trabajador) ON DELETE CASCADE,
-    estado_contratacion VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
-    monto_acordado NUMERIC(12,2),
-    precio_final_acordado NUMERIC(12,2),
-    fecha_horario_acordado TIMESTAMP WITH TIME ZONE,
-    materiales_incluidos BOOLEAN,
-    direccion_o_zona TEXT,
-    condiciones_especiales TEXT,
-    detalle_acuerdo TEXT,
-    fecha_solicitud TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    fecha_confirmacion TIMESTAMP WITH TIME ZONE,
-    fecha_rechazo TIMESTAMP WITH TIME ZONE
-);
-
-CREATE INDEX IF NOT EXISTS idx_contrataciones_cliente ON contrataciones (id_cliente);
-CREATE INDEX IF NOT EXISTS idx_contrataciones_trabajador ON contrataciones (id_trabajador);
-CREATE INDEX IF NOT EXISTS idx_contrataciones_estado ON contrataciones (estado_contratacion);
-
--- Datos Iniciales de Oficios
-INSERT INTO oficios (nombre_oficio, especialidad_oficio) VALUES
-('Carpintero', 'Muebles y aberturas'),
-('Electricista', 'Instalaciones domiciliarias'),
-('Albañil', 'Construcción en seco y húmedo'),
-('Plomero', 'Instalación de agua y gas'),
-('Sastre', 'Confección y arreglos'),
-('Mecánico', 'Automotores y motos');
