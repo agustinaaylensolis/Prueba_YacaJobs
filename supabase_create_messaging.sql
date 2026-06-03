@@ -159,10 +159,14 @@ create table if not exists public.contrataciones (
     materiales_incluidos boolean,
     direccion_o_zona text,
     condiciones_especiales text,
+    detalle_acuerdo text,
     fecha_solicitud timestamp with time zone default current_timestamp,
     fecha_confirmacion timestamp with time zone,
     fecha_rechazo timestamp with time zone
 );
+
+alter table public.contrataciones
+    add column if not exists detalle_acuerdo text;
 
 create index if not exists idx_contrataciones_cliente on public.contrataciones (id_cliente);
 create index if not exists idx_contrataciones_trabajador on public.contrataciones (id_trabajador);
