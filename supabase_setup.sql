@@ -141,7 +141,6 @@ CREATE TABLE IF NOT EXISTS contrataciones (
     materiales_incluidos BOOLEAN,
     direccion_o_zona TEXT,
     condiciones_especiales TEXT,
-    detalle_acuerdo TEXT,
     fecha_solicitud TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     fecha_confirmacion TIMESTAMP WITH TIME ZONE,
     fecha_rechazo TIMESTAMP WITH TIME ZONE
