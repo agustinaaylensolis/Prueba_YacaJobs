@@ -369,56 +369,45 @@ const ConversationModal = ({
             </div>
 
             <div className="p-6 md:p-8 space-y-6 bg-slate-50/80">
-              {canEditAgreement ? (
-                <>
-                  <div className="space-y-2">
-                    <h4 className="text-lg font-bold text-slate-900">Acuerdo estructurado</h4>
-                    <p className="text-sm text-slate-500">Guardá aquí lo pactado antes de confirmar la contratación.</p>
-                  </div>
+              <div className="space-y-2">
+                <h4 className="text-lg font-bold text-slate-900">Acuerdo estructurado</h4>
+                <p className="text-sm text-slate-500">Guardá aquí lo pactado antes de confirmar la contratación.</p>
+              </div>
 
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Precio final acordado</label>
-                      <input className="input-soft" type="number" min="0" value={agreementDraft.precioFinalAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, precioFinalAcordado: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha y horario</label>
-                      <input className="input-soft" type="datetime-local" value={agreementDraft.fechaHorarioAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, fechaHorarioAcordado: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Materiales incluidos</label>
-                      <select className="input-soft" value={agreementDraft.materialesIncluidos} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, materialesIncluidos: e.target.value }))}>
-                        <option value="">Sin definir</option>
-                        <option value="true">Sí</option>
-                        <option value="false">No</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dirección o zona</label>
-                      <input className="input-soft" value={agreementDraft.direccionOZona} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, direccionOZona: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Condiciones especiales</label>
-                      <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.condicionesEspeciales} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, condicionesEspeciales: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Detalle del acuerdo</label>
-                      <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.detalleAcuerdo} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, detalleAcuerdo: e.target.value }))} />
-                    </div>
-                  </div>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Precio final acordado</label>
+                  <input className="input-soft" type="number" min="0" value={agreementDraft.precioFinalAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, precioFinalAcordado: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha y horario</label>
+                  <input className="input-soft" type="datetime-local" value={agreementDraft.fechaHorarioAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, fechaHorarioAcordado: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Materiales incluidos</label>
+                  <select className="input-soft" value={agreementDraft.materialesIncluidos} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, materialesIncluidos: e.target.value }))}>
+                    <option value="">Sin definir</option>
+                    <option value="true">Sí</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dirección o zona</label>
+                  <input className="input-soft" value={agreementDraft.direccionOZona} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, direccionOZona: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Condiciones especiales</label>
+                  <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.condicionesEspeciales} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, condicionesEspeciales: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Detalle del acuerdo</label>
+                  <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.detalleAcuerdo} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, detalleAcuerdo: e.target.value }))} />
+                </div>
+              </div>
 
-                  <Button onClick={handleSaveAgreement} disabled={isSavingAgreement} className="w-full">
-                    {isSavingAgreement ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Guardar acuerdo'}
-                  </Button>
-                </>
-              ) : currentRole !== UserRole.CLIENT ? (
-                <Card className="p-4 bg-white border border-slate-200 space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Acuerdo estructurado</p>
-                  <p className="text-sm text-slate-600">
-                    El formulario estará disponible cuando la contratación pase a estado Confirmada.
-                  </p>
-                </Card>
-              )}
+              <Button onClick={handleSaveAgreement} disabled={isSavingAgreement} className="w-full">
+                {isSavingAgreement ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Guardar acuerdo'}
+              </Button>
 
               <div className="grid grid-cols-2 gap-2">
                 <Button variant="outline" onClick={() => handleDecision('REJECT')} disabled={isUpdatingDecision} className="w-full">
@@ -1857,11 +1846,11 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openWorkerConversation = async (conversationId: number) => {
-    const res = await fetch(`/api/jobs/conversations/${conversationId}/messages?role=WORKER&userId=${user.id_trabajador}`);
+  const openWorkerConversation = async (conversation: any) => {
+    const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages?role=WORKER&userId=${user.id_trabajador}`);
     if (res.ok) {
       const msgs = await res.json();
-      setWorkerSelectedConversation({ id_conversacion: conversationId });
+      setWorkerSelectedConversation(conversation);
       setWorkerMessages(msgs);
     }
   };
@@ -2033,7 +2022,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-1 space-y-3">
                 {workerConversations.length > 0 ? workerConversations.map((c: ConversationSummary) => (
-                  <div key={c.id_conversacion} className="p-3 hover:shadow-lg cursor-pointer" onClick={async () => { setWorkerSelectedConversation(c); await openWorkerConversation(c.id_conversacion); }}>
+                  <div key={c.id_conversacion} className="p-3 hover:shadow-lg cursor-pointer" onClick={async () => { setWorkerSelectedConversation(c); await openWorkerConversation(c); }}>
                     <Card>
                       <div className="flex items-center justify-between">
                         <div>

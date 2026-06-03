@@ -106,8 +106,19 @@ export class JobsService {
       return createdConversation;
     })();
 
+    // Obtener el nombre del trabajador para mostrarlo al cliente
+    let counterpart_name: string | null = null;
+    if (conversation.id_trabajador) {
+      const { data: worker } = await this.client
+        .from('trabajadores')
+        .select('nombre_y_apellido_trabajador')
+        .eq('id_trabajador', conversation.id_trabajador)
+        .maybeSingle();
+      counterpart_name = worker?.nombre_y_apellido_trabajador || null;
+    }
+
     const contract = await this.ensureContract(conversation);
-    return { conversation, contract };
+    return { conversation: { ...conversation, counterpart_name }, contract };
   }
 
   async getConversations(role: UserRole, userId: number) {
@@ -146,11 +157,30 @@ export class JobsService {
       if (unreadCountResult.error) throw new BadRequestException(unreadCountResult.error.message);
       if (contractResult.error) throw new BadRequestException(contractResult.error.message);
 
+      // Obtener el nombre real del interlocutor
+      let counterpart_name: string | null = null;
+      if (role === 'CLIENT' && conversation.id_trabajador) {
+        const { data: worker } = await this.client
+          .from('trabajadores')
+          .select('nombre_y_apellido_trabajador')
+          .eq('id_trabajador', conversation.id_trabajador)
+          .maybeSingle();
+        counterpart_name = worker?.nombre_y_apellido_trabajador || null;
+      } else if (role === 'WORKER' && conversation.id_cliente) {
+        const { data: client } = await this.client
+          .from('clientes')
+          .select('nombre_y_apellido_cliente')
+          .eq('id_cliente', conversation.id_cliente)
+          .maybeSingle();
+        counterpart_name = client?.nombre_y_apellido_cliente || null;
+      }
+
       return {
         ...conversation,
         last_message: lastMessageResult.data || null,
         unread_count: unreadCountResult.count || 0,
         contract: contractResult.data || null,
+        counterpart_name,
       };
     }));
 
