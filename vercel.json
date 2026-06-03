@@ -2,21 +2,14 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "functions": {
-    "server.ts": {
-      "runtime": "nodejs20.x"
-    }
-  },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/server.ts",
-      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+      "source": "/api/(.*)",
+      "destination": "/server.ts"
     },
     {
-      "src": "/(.*)",
-      "dest": "/index.html",
-      "status": 200
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
