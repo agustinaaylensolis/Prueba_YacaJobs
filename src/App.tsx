@@ -975,12 +975,28 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     return errors;
   };
 
-  const handleSearch = async (tradeId?: number) => {
-    // Strategy Pattern: Seleccionar estrategia según si hay tradeId
-    const strategyType = tradeId ? 'by-trade' : 'all-workers';
+  const handleSearch = async (params?: { tradeId?: number; query?: string }) => {
+    // Strategy Pattern: Seleccionar estrategia según los parámetros
+    let strategyType: string;
+    let strategyParams: any = {};
+
+    if (params?.query && params.query.trim() !== '') {
+      // Búsqueda por texto (nombre de trabajador u oficio)
+      strategyType = 'by-text';
+      strategyParams = { query: params.query.trim() };
+    } else if (params?.tradeId) {
+      // Búsqueda por oficio específico
+      strategyType = 'by-trade';
+      strategyParams = { tradeId: params.tradeId };
+    } else {
+      // Ver todos los trabajadores
+      strategyType = 'all-workers';
+      strategyParams = {};
+    }
+
     const strategy = SearchStrategyFactory.create(strategyType);
     try {
-      const results = await strategy.execute({ tradeId });
+      const results = await strategy.execute(strategyParams);
       setSearchResults(results);
     } catch (error) {
       console.error('Error en búsqueda:', error);
@@ -1262,21 +1278,35 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       <main className="flex-1 p-10 space-y-8 overflow-y-auto">
         {activeTab === 'search' && (
           <div className="space-y-8 max-w-5xl">
-            <div className="flex items-center gap-4">
-               <input 
-                 className="input-soft flex-1" 
-                 placeholder="¿Qué oficio necesitas?" 
-                 value={searchQuery} 
-                 onChange={e => setSearchQuery(e.target.value)} 
-               />
-               <Button onClick={() => handleSearch()} className="px-8">Ver Todos</Button>
+            <div className="flex items-center gap-2">
+               <div className="relative flex-1">
+                 <input 
+                   className="input-soft w-full pr-12" 
+                   placeholder="Buscar por nombre de trabajador u oficio..." 
+                   value={searchQuery} 
+                   onChange={e => setSearchQuery(e.target.value)}
+                   onKeyDown={e => {
+                     if (e.key === 'Enter') {
+                       handleSearch({ query: searchQuery });
+                     }
+                   }}
+                 />
+                 <button
+                   onClick={() => handleSearch({ query: searchQuery })}
+                   className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-primary text-white hover:opacity-90 transition-all"
+                   title="Buscar"
+                 >
+                   <Search className="w-4 h-4" />
+                 </button>
+               </div>
+               <Button onClick={() => handleSearch({})} className="px-8 shrink-0">Ver Todos</Button>
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                {trades.map(t => (
                  <button 
                    key={t.id_oficio} 
-                   onClick={() => handleSearch(t.id_oficio)} 
+                   onClick={() => handleSearch({ tradeId: t.id_oficio })} 
                    className="p-4 bg-white rounded-2xl border border-slate-100 hover:border-accent transition-all text-center flex flex-col items-center gap-2"
                  >
                     <Briefcase className="w-4 h-4 text-primary"/>
@@ -1286,12 +1316,17 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {searchResults.length > 0 ? searchResults.map(w => (
+               {searchResults.length > 0 ? searchResults.map(w => {
+                 // Normalizar nombres de oficios (soporta formato legacy y nuevo)
+                 const workerTrades = w.oficios || w.oficio_del_trabajador?.map((ot: any) => ot?.oficios || ot).filter(Boolean) || [];
+                 const tradeNames = workerTrades.map((t: any) => t?.nombre_oficio).filter(Boolean).join(', ');
+                 return (
                  <Card key={w.id_trabajador} className="p-6 space-y-4">
                     <div className="flex items-center gap-4">
                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
                        <div>
                          <h4 className="font-bold text-sm">{w.nombre_y_apellido_trabajador}</h4>
+                         {tradeNames && <p className="text-[10px] text-slate-500 font-medium">{tradeNames}</p>}
                          <p className="text-[10px] text-slate-400">Puntaje: {w.puntuacion || '0.0'}</p>
                        </div>
                     </div>
@@ -1300,13 +1335,24 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         <Star key={i} className={`w-3 h-3 ${i < Math.round(Number(w.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`}/>
                       ))}
                     </div>
+                    {tradeNames && (
+                      <div className="flex flex-wrap gap-1">
+                        {workerTrades.map((t: any, i: number) => (
+                          <span key={t?.id_oficio || i} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                            {t?.nombre_oficio}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <Button variant="secondary" className="w-full text-xs" onClick={() => handleViewWorkerProfile(w.id_trabajador)}>Ver Perfil</Button>
                       <Button className="w-full text-xs" onClick={() => openConversation(w.id_trabajador)}>Contratar</Button>
                     </div>
                  </Card>
-               )) : (
-                 <div className="col-span-full py-12 text-center text-slate-400 font-medium">No se encontraron trabajadores en esta categoría.</div>
+               )}) : (
+                 <div className="col-span-full py-12 text-center text-slate-400 font-medium">
+                   {searchQuery.trim() ? `No se encontraron resultados para "${searchQuery.trim()}".` : 'No se encontraron trabajadores en esta categoría.'}
+                 </div>
                )}
             </div>
           </div>

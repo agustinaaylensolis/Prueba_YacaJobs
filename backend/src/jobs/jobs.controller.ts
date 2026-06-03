@@ -22,8 +22,19 @@ export class JobsController {
   }
 
   @Get('workers')
-  async getWorkers(@Query('tradeId') tradeId?: string) {
+  async getWorkers(@Query('tradeId') tradeId?: string, @Query('q') q?: string) {
+    if (q) {
+      return this.jobsService.searchWorkersByText(q);
+    }
     return this.jobsService.getWorkers(tradeId ? parseInt(tradeId) : undefined);
+  }
+
+  @Get('workers/search')
+  async searchWorkers(@Query('q') q: string) {
+    if (!q || q.trim() === '') {
+      throw new BadRequestException('El parámetro de búsqueda "q" es requerido');
+    }
+    return this.jobsService.searchWorkersByText(q.trim());
   }
 
   @Get('workers/:workerId')
