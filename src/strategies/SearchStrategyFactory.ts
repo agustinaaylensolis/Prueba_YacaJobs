@@ -25,6 +25,7 @@
 import { SearchStrategy } from './SearchStrategy';
 import { SearchAllWorkersStrategy } from './SearchAllWorkersStrategy';
 import { SearchByTradeStrategy } from './SearchByTradeStrategy';
+import { SearchByTextStrategy } from './SearchByTextStrategy';
 import { SearchProfileStrategy } from './SearchProfileStrategy';
 
 export class SearchStrategyFactory {
@@ -52,12 +53,15 @@ export class SearchStrategyFactory {
       case 'by-trade':
         return new SearchByTradeStrategy();
 
+      case 'by-text':
+        return new SearchByTextStrategy();
+
       case 'profile':
         return new SearchProfileStrategy();
 
       default:
         throw new Error(
-          `Tipo de estrategia no reconocido: "${type}". Tipos válidos: all-workers, by-trade, profile`
+          `Tipo de estrategia no reconocido: "${type}". Tipos válidos: all-workers, by-trade, by-text, profile`
         );
     }
   }

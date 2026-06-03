@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3 } from 'lucide-react';
+import RatingStars from './components/RatingStars';
+import { getWorkerRatings, createWorkerRating } from './lib/ratings';
+import { Rating } from './types';
 import { COLORS } from './constants';
 import { UserRole } from './types';
 import { supabase } from './lib/supabase';
@@ -924,6 +927,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [selectedWorkerProfile, setSelectedWorkerProfile] = useState<any>(null);
   const [isLoadingWorkerProfile, setIsLoadingWorkerProfile] = useState(false);
   const [workerProfileError, setWorkerProfileError] = useState('');
+  const [workerRatings, setWorkerRatings] = useState<Rating[]>([]);
+  const [isLoadingWorkerRatings, setIsLoadingWorkerRatings] = useState(false);
+  const [showCreateRatingForm, setShowCreateRatingForm] = useState(false);
+  const [newRating, setNewRating] = useState({ puntuacion: 0, comentario: '' });
+  const [newRatingError, setNewRatingError] = useState('');
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+  const [newRatingSuccess, setNewRatingSuccess] = useState('');
 
   const loadInitial = async () => {
     const clientId = Number(user?.id_cliente);
@@ -965,12 +975,28 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     return errors;
   };
 
-  const handleSearch = async (tradeId?: number) => {
-    // Strategy Pattern: Seleccionar estrategia según si hay tradeId
-    const strategyType = tradeId ? 'by-trade' : 'all-workers';
+  const handleSearch = async (params?: { tradeId?: number; query?: string }) => {
+    // Strategy Pattern: Seleccionar estrategia según los parámetros
+    let strategyType: string;
+    let strategyParams: any = {};
+
+    if (params?.query && params.query.trim() !== '') {
+      // Búsqueda por texto (nombre de trabajador u oficio)
+      strategyType = 'by-text';
+      strategyParams = { query: params.query.trim() };
+    } else if (params?.tradeId) {
+      // Búsqueda por oficio específico
+      strategyType = 'by-trade';
+      strategyParams = { tradeId: params.tradeId };
+    } else {
+      // Ver todos los trabajadores
+      strategyType = 'all-workers';
+      strategyParams = {};
+    }
+
     const strategy = SearchStrategyFactory.create(strategyType);
     try {
-      const results = await strategy.execute({ tradeId });
+      const results = await strategy.execute(strategyParams);
       setSearchResults(results);
     } catch (error) {
       console.error('Error en búsqueda:', error);
@@ -1071,6 +1097,19 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       const strategy = SearchStrategyFactory.create('profile');
       const profile = await strategy.execute({ workerId });
       setSelectedWorkerProfile(profile);
+
+      // Cargar valoraciones del trabajador de forma independiente
+      setIsLoadingWorkerRatings(true);
+      try {
+        const ratings = await getWorkerRatings(workerId);
+        setWorkerRatings(ratings);
+      } catch (ratingsError: any) {
+        console.error("Error loading worker ratings:", ratingsError);
+        // Manejar error de carga de ratings sin bloquear la carga del perfil
+        setWorkerRatings([]); // Asegurar que sea un array vacío en caso de error
+      } finally {
+        setIsLoadingWorkerRatings(false);
+      }
     } catch (error: any) {
       setWorkerProfileError(error.message || 'No se pudo cargar el perfil.');
     } finally {
@@ -1082,9 +1121,61 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     setSelectedWorkerProfile(null);
     setWorkerProfileError('');
     setIsLoadingWorkerProfile(false);
+    setWorkerRatings([]); // Limpiar ratings al cerrar el perfil
+    setShowCreateRatingForm(false); // Limpiar formulario de rating
+    setNewRating({ puntuacion: 0, comentario: '' });
+    setNewRatingError('');
+    setNewRatingSuccess('');
   };
 
   const workerProfileOpen = Boolean(selectedWorkerProfile || workerProfileError || isLoadingWorkerProfile);
+
+  const handleCreateWorkerRating = async () => {
+    if (!user?.id_cliente) {
+      setNewRatingError('Debes iniciar sesión como cliente para valorar.');
+      return;
+    }
+    if (newRating.puntuacion < 1 || newRating.puntuacion > 5) {
+      setNewRatingError('La puntuación debe ser entre 1 y 5 estrellas.');
+      return;
+    }
+    if (newRating.comentario.length > 500) {
+      setNewRatingError('El comentario no puede exceder los 500 caracteres.');
+      return;
+    }
+
+    setIsSubmittingRating(true);
+    setNewRatingError('');
+    setNewRatingSuccess('');
+
+    try {
+      const createdRating = await createWorkerRating({
+        puntuacion: newRating.puntuacion,
+        comentario: newRating.comentario.trim() || null,
+        id_emisor_cliente: user.id_cliente,
+        id_receptor_trabajador: selectedWorkerProfile?.id_trabajador as number,
+      });
+
+      setNewRatingSuccess('¡Valoración enviada con éxito!');
+      setNewRating({ puntuacion: 0, comentario: '' });
+      setShowCreateRatingForm(false);
+
+      // Actualizar la lista de valoraciones y el perfil del trabajador
+      // Re-fetch del perfil para actualizar el promedio y la cantidad de valoraciones
+      // y re-fetch de las valoraciones detalladas
+      if (selectedWorkerProfile?.id_trabajador) {
+        const updatedProfile = await SearchStrategyFactory.create('profile').execute({ workerId: selectedWorkerProfile.id_trabajador });
+        setSelectedWorkerProfile(updatedProfile);
+        const updatedRatings = await getWorkerRatings(selectedWorkerProfile.id_trabajador);
+        setWorkerRatings(updatedRatings);
+      }
+
+    } catch (error: any) {
+      setNewRatingError(error.message || 'Error al enviar la valoración. Intenta nuevamente.');
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  };
 
   // Mensajería
   const [conversations, setConversations] = useState<any[]>([]);
@@ -1187,21 +1278,35 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       <main className="flex-1 p-10 space-y-8 overflow-y-auto">
         {activeTab === 'search' && (
           <div className="space-y-8 max-w-5xl">
-            <div className="flex items-center gap-4">
-               <input 
-                 className="input-soft flex-1" 
-                 placeholder="¿Qué oficio necesitas?" 
-                 value={searchQuery} 
-                 onChange={e => setSearchQuery(e.target.value)} 
-               />
-               <Button onClick={() => handleSearch()} className="px-8">Ver Todos</Button>
+            <div className="flex items-center gap-2">
+               <div className="relative flex-1">
+                 <input 
+                   className="input-soft w-full pr-12" 
+                   placeholder="Buscar por nombre de trabajador u oficio..." 
+                   value={searchQuery} 
+                   onChange={e => setSearchQuery(e.target.value)}
+                   onKeyDown={e => {
+                     if (e.key === 'Enter') {
+                       handleSearch({ query: searchQuery });
+                     }
+                   }}
+                 />
+                 <button
+                   onClick={() => handleSearch({ query: searchQuery })}
+                   className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-primary text-white hover:opacity-90 transition-all"
+                   title="Buscar"
+                 >
+                   <Search className="w-4 h-4" />
+                 </button>
+               </div>
+               <Button onClick={() => handleSearch({})} className="px-8 shrink-0">Ver Todos</Button>
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                {trades.map(t => (
                  <button 
                    key={t.id_oficio} 
-                   onClick={() => handleSearch(t.id_oficio)} 
+                   onClick={() => handleSearch({ tradeId: t.id_oficio })} 
                    className="p-4 bg-white rounded-2xl border border-slate-100 hover:border-accent transition-all text-center flex flex-col items-center gap-2"
                  >
                     <Briefcase className="w-4 h-4 text-primary"/>
@@ -1211,12 +1316,17 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {searchResults.length > 0 ? searchResults.map(w => (
+               {searchResults.length > 0 ? searchResults.map(w => {
+                 // Normalizar nombres de oficios (soporta formato legacy y nuevo)
+                 const workerTrades = w.oficios || w.oficio_del_trabajador?.map((ot: any) => ot?.oficios || ot).filter(Boolean) || [];
+                 const tradeNames = workerTrades.map((t: any) => t?.nombre_oficio).filter(Boolean).join(', ');
+                 return (
                  <Card key={w.id_trabajador} className="p-6 space-y-4">
                     <div className="flex items-center gap-4">
                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
                        <div>
                          <h4 className="font-bold text-sm">{w.nombre_y_apellido_trabajador}</h4>
+                         {tradeNames && <p className="text-[10px] text-slate-500 font-medium">{tradeNames}</p>}
                          <p className="text-[10px] text-slate-400">Puntaje: {w.puntuacion || '0.0'}</p>
                        </div>
                     </div>
@@ -1225,13 +1335,24 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         <Star key={i} className={`w-3 h-3 ${i < Math.round(Number(w.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`}/>
                       ))}
                     </div>
+                    {tradeNames && (
+                      <div className="flex flex-wrap gap-1">
+                        {workerTrades.map((t: any, i: number) => (
+                          <span key={t?.id_oficio || i} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                            {t?.nombre_oficio}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <Button variant="secondary" className="w-full text-xs" onClick={() => handleViewWorkerProfile(w.id_trabajador)}>Ver Perfil</Button>
                       <Button className="w-full text-xs" onClick={() => openConversation(w.id_trabajador)}>Contratar</Button>
                     </div>
                  </Card>
-               )) : (
-                 <div className="col-span-full py-12 text-center text-slate-400 font-medium">No se encontraron trabajadores en esta categoría.</div>
+               )}) : (
+                 <div className="col-span-full py-12 text-center text-slate-400 font-medium">
+                   {searchQuery.trim() ? `No se encontraron resultados para "${searchQuery.trim()}".` : 'No se encontraron trabajadores en esta categoría.'}
+                 </div>
                )}
             </div>
           </div>
@@ -1498,26 +1619,105 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                           </p>
                         </section>
 
+                        {/* Sección de Resumen de Valoración */}
                         <section className="space-y-4">
-                          <h4 className="text-3xl font-extrabold text-slate-900">Reseñas</h4>
-                          {selectedWorkerProfile?.valoraciones?.length ? (
+                          <h4 className="text-3xl font-extrabold text-slate-900">Valoración</h4>
+                          <div className="flex items-center gap-2">
+                            <RatingStars rating={Number(selectedWorkerProfile?.puntuacion || 0)} size={5} />
+                            <span className="text-xl font-bold text-slate-800">
+                              {Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)} de 5
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-500">
+                            {selectedWorkerProfile?.totalRatings === 0
+                              ? 'No hay calificaciones aún'
+                              : `${selectedWorkerProfile?.totalRatings} valoraciones`}
+                          </p>
+                        </section>
+
+                        {/* Sección de Detalle de Valoraciones */}
+                        <section className="space-y-4">
+                          <h4 className="text-3xl font-extrabold text-slate-900">Opiniones de clientes</h4>
+                          {isLoadingWorkerRatings ? (
+                            <div className="py-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
+                          ) : workerRatings.length > 0 ? (
                             <div className="space-y-3">
-                              {selectedWorkerProfile.valoraciones.map((review: any) => (
+                              {workerRatings.map((review: Rating) => (
                                 <Card key={review.id_valoracion} className="p-4 border border-slate-100">
                                   <div className="flex items-center justify-between mb-2">
-                                    <p className="font-bold text-sm text-slate-800">{review.cliente}</p>
-                                    <div className="flex gap-1">
-                                      {[...Array(5)].map((_, i) => (
-                                        <Star key={i} className={`w-3 h-3 ${i < Number(review.puntuacion || 0) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`} />
-                                      ))}
-                                    </div>
+                                    <p className="font-bold text-sm text-slate-800">{review.nombre_cliente || 'Cliente Anónimo'}</p>
+                                    <RatingStars rating={review.puntuacion} size={3} />
                                   </div>
                                   <p className="text-sm text-slate-600">{review.comentario || 'Sin comentario.'}</p>
+                                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">
+                                    {new Date(review.fecha_valoracion).toLocaleDateString()}
+                                  </div>
                                 </Card>
                               ))}
                             </div>
                           ) : (
-                            <p className="text-slate-500">Este profesional aun no tiene reseñas.</p>
+                            <p className="text-slate-500">Este profesional aún no tiene opiniones.</p>
+                          )}
+                        </section>
+
+                        {/* Sección de Crear Valoración */}
+                        <section className="space-y-4">
+                          <h4 className="text-3xl font-extrabold text-slate-900">Dejar una valoración</h4>
+                          {!showCreateRatingForm && (
+                            <Button onClick={() => setShowCreateRatingForm(true)}>Valorar trabajador</Button>
+                          )}
+
+                          {showCreateRatingForm && (
+                            <Card className="p-6 space-y-4 border border-primary/20 bg-primary/5">
+                              {newRatingError && (
+                                <div className="bg-red-100 text-red-700 p-3 rounded-xl text-sm font-bold">
+                                  {newRatingError}
+                                </div>
+                              )}
+                              {newRatingSuccess && (
+                                <div className="bg-green-100 text-green-700 p-3 rounded-xl text-sm font-bold">
+                                  {newRatingSuccess}
+                                </div>
+                              )}
+                              <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700">Tu puntuación:</label>
+                                <RatingStars
+                                  rating={newRating.puntuacion}
+                                  onRatingChange={(r) => setNewRating({ ...newRating, puntuacion: r })}
+                                  editable
+                                  size={6}
+                                  className="justify-center"
+                                />
+                                {newRating.puntuacion === 0 && newRatingError.includes('puntuación') && (
+                                  <p className="text-xs text-red-600 font-semibold text-center">La puntuación es obligatoria.</p>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700">Comentario (opcional):</label>
+                                <textarea
+                                  className="input-soft min-h-24 resize-none"
+                                  placeholder="Comparte tu experiencia..."
+                                  maxLength={500}
+                                  value={newRating.comentario}
+                                  onChange={(e) => setNewRating({ ...newRating, comentario: e.target.value })}
+                                />
+                                <p className="text-xs text-slate-500 text-right">
+                                  {newRating.comentario.length}/500
+                                </p>
+                                {newRatingError.includes('comentario') && (
+                                  <p className="text-xs text-red-600 font-semibold">{newRatingError}</p>
+                                )}
+                              </div>
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" onClick={() => setShowCreateRatingForm(false)}>Cancelar</Button>
+                                <Button
+                                  onClick={handleCreateWorkerRating}
+                                  disabled={isSubmittingRating || newRating.puntuacion === 0}
+                                >
+                                  {isSubmittingRating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar valoración'}
+                                </Button>
+                              </div>
+                            </Card>
                           )}
                         </section>
                       </>
@@ -1536,8 +1736,11 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     <Card className="p-6 space-y-3 border border-slate-200">
                       <h5 className="text-2xl font-bold text-slate-900">Experiencia</h5>
                       <p className="text-sm text-slate-600">Puntuación promedio</p>
-                      <div className="text-3xl font-extrabold text-primary">{Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)}</div>
-                      <p className="text-sm text-slate-500">Basado en {selectedWorkerProfile?.cantidad_valoraciones || 0} valoraciones</p>
+                      <div className="flex items-center gap-2">
+                        <RatingStars rating={Number(selectedWorkerProfile?.puntuacion || 0)} size={5} />
+                        <span className="text-3xl font-extrabold text-primary">{Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)}</span>
+                      </div>
+                      <p className="text-sm text-slate-500">Basado en {selectedWorkerProfile?.totalRatings || 0} valoraciones</p>
                     </Card>
 
                     <Card className="p-6 space-y-3 border border-slate-200">

@@ -31,12 +31,11 @@ export class SearchProfileStrategy implements SearchStrategy {
    * Incluye:
    *   - Información básica del trabajador
    *   - Oficios que realiza
-   *   - Reseñas/comentarios
-   *   - Estadísticas de trabajo
+   *   - Puntuación promedio y cantidad de valoraciones
    *
    * @param params - Objeto con { workerId: number }
    *                 workerId es el ID del trabajador
-   * @returns Promesa con Worker (objeto detallado con perfil completo)
+   * @returns Promesa con WorkerProfile (objeto detallado con perfil completo)
    * @throws Error si la búsqueda falla, respuesta no es ok, o JSON parsing falla
    */
   async execute(params: any): Promise<any> {
@@ -48,7 +47,7 @@ export class SearchProfileStrategy implements SearchStrategy {
     }
 
     try {
-      const url = `/api/jobs/workers/${workerId}`;
+      const url = `/api/jobs/workers/${workerId}?includeRatingsSummary=true`; // Asegurar que el backend incluya el resumen de ratings
       const res = await fetch(url);
 
       // Intentar parsear JSON incluso si response no es ok

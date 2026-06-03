@@ -377,6 +377,55 @@ export class JobsService {
     return data;
   }
 
+  async searchWorkersByText(q: string) {
+    // Escapar caracteres especiales de ILIKE (% y _) para que no funcionen como comodines
+    const escapedQ = q.replace(/[%_]/g, '\\$&');
+    const searchTerm = `%${escapedQ}%`;
+
+    // Buscar IDs de oficios que coincidan con el texto
+    const { data: matchingTrades, error: tradesError } = await this.client
+      .from('oficios')
+      .select('id_oficio')
+      .ilike('nombre_oficio', searchTerm);
+
+    if (tradesError) throw new BadRequestException(tradesError.message);
+
+    const tradeIds = (matchingTrades || []).map(t => t.id_oficio);
+
+    // Buscar trabajadores por nombre o por oficio coincidente
+    // Incluye nombres de oficios en la consulta (anidado) para mostrarlos en el frontend
+    let query = this.client
+      .from('trabajadores')
+      .select(`
+        *,
+        oficio_del_trabajador (
+          id_oficio,
+          oficios (
+            id_oficio,
+            nombre_oficio
+          )
+        )
+      `)
+      .or(
+        tradeIds.length > 0
+          ? `nombre_y_apellido_trabajador.ilike.${searchTerm},oficio_del_trabajador.id_oficio.in.(${tradeIds.join(',')})`
+          : `nombre_y_apellido_trabajador.ilike.${searchTerm}`
+      )
+      .limit(50);
+
+    const { data, error } = await query;
+    if (error) throw new BadRequestException(error.message);
+
+    // Normalizar estructura para que sea consistente con getWorkerProfile
+    return (data || []).map((worker: any) => ({
+      ...worker,
+      oficios: (worker.oficio_del_trabajador || [])
+        .map((item: any) => item?.oficios)
+        .filter(Boolean),
+      oficio_del_trabajador: undefined, // limpiar raw join
+    }));
+  }
+
   async getWorkerProfile(workerId: number) {
     const { data: worker, error: workerError } = await this.client
       .from('trabajadores')

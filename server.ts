@@ -96,13 +96,19 @@ async function bootstrap() {
         server: { middlewareMode: true },
         appType: 'spa',
       });
-      expressApp.use(vite.middlewares);
+      // Wrap Vite middlewares to skip /api routes (NestJS handles those)
+      expressApp.use((req: any, res: any, next: any) => {
+        if (req.url.startsWith('/api')) {
+          return next();
+        }
+        vite.middlewares(req, res, next);
+      });
     }
 
     if (!isVercel) {
       console.log('Starting to listen...');
       await app.listen(PORT, '0.0.0.0');
-      console.log(`${isProduction ? 'PRODUCTION' : 'BACKEND'} READY: http://0.0.0.0:${PORT}`);
+      console.log(`${isProduction ? 'PRODUCTION' : 'BACKEND'} READY: http://localhost:${PORT}`);
     } else {
       await app.init();
     }
