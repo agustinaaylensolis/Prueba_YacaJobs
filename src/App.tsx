@@ -147,6 +147,7 @@ const ConversationModal = ({
 
   const counterpartName = conversation?.counterpart_name || `Usuario #${currentRole === UserRole.CLIENT ? conversation?.id_trabajador : conversation?.id_cliente}`;
   const contractState = contract?.estado_contratacion || 'Pendiente';
+  const canEditAgreement = currentRole !== UserRole.CLIENT && contractState === 'Confirmada';
 
   const syncAgreementDraft = (record: ContractRecord | null) => {
     setAgreementDraft({
@@ -368,54 +369,64 @@ const ConversationModal = ({
             </div>
 
             <div className="p-6 md:p-8 space-y-6 bg-slate-50/80">
-              <div className="space-y-2">
-                <h4 className="text-lg font-bold text-slate-900">Acuerdo estructurado</h4>
-                <p className="text-sm text-slate-500">Guardá aquí lo pactado antes de confirmar la contratación.</p>
-              </div>
+              {canEditAgreement ? (
+                <>
+                  <div className="space-y-2">
+                    <h4 className="text-lg font-bold text-slate-900">Acuerdo estructurado</h4>
+                    <p className="text-sm text-slate-500">Guardá aquí lo pactado antes de confirmar la contratación.</p>
+                  </div>
 
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Precio final acordado</label>
-                  <input className="input-soft" type="number" min="0" value={agreementDraft.precioFinalAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, precioFinalAcordado: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha y horario</label>
-                  <input className="input-soft" type="datetime-local" value={agreementDraft.fechaHorarioAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, fechaHorarioAcordado: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Materiales incluidos</label>
-                  <select className="input-soft" value={agreementDraft.materialesIncluidos} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, materialesIncluidos: e.target.value }))}>
-                    <option value="">Sin definir</option>
-                    <option value="true">Sí</option>
-                    <option value="false">No</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dirección o zona</label>
-                  <input className="input-soft" value={agreementDraft.direccionOZona} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, direccionOZona: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Condiciones especiales</label>
-                  <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.condicionesEspeciales} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, condicionesEspeciales: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Detalle del acuerdo</label>
-                  <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.detalleAcuerdo} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, detalleAcuerdo: e.target.value }))} />
-                </div>
-              </div>
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Precio final acordado</label>
+                      <input className="input-soft" type="number" min="0" value={agreementDraft.precioFinalAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, precioFinalAcordado: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha y horario</label>
+                      <input className="input-soft" type="datetime-local" value={agreementDraft.fechaHorarioAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, fechaHorarioAcordado: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Materiales incluidos</label>
+                      <select className="input-soft" value={agreementDraft.materialesIncluidos} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, materialesIncluidos: e.target.value }))}>
+                        <option value="">Sin definir</option>
+                        <option value="true">Sí</option>
+                        <option value="false">No</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dirección o zona</label>
+                      <input className="input-soft" value={agreementDraft.direccionOZona} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, direccionOZona: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Condiciones especiales</label>
+                      <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.condicionesEspeciales} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, condicionesEspeciales: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Detalle del acuerdo</label>
+                      <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.detalleAcuerdo} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, detalleAcuerdo: e.target.value }))} />
+                    </div>
+                  </div>
 
-              <div className="flex flex-col gap-2">
-                <Button onClick={handleSaveAgreement} disabled={isSavingAgreement} className="w-full">
-                  {isSavingAgreement ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Guardar acuerdo'}
+                  <Button onClick={handleSaveAgreement} disabled={isSavingAgreement} className="w-full">
+                    {isSavingAgreement ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Guardar acuerdo'}
+                  </Button>
+                </>
+              ) : currentRole !== UserRole.CLIENT ? (
+                <Card className="p-4 bg-white border border-slate-200 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Acuerdo estructurado</p>
+                  <p className="text-sm text-slate-600">
+                    El formulario estará disponible cuando la contratación pase a estado Confirmada.
+                  </p>
+                </Card>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => handleDecision('REJECT')} disabled={isUpdatingDecision} className="w-full">
+                  {isUpdatingDecision ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Rechazar'}
                 </Button>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" onClick={() => handleDecision('REJECT')} disabled={isUpdatingDecision} className="w-full">
-                    {isUpdatingDecision ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Rechazar'}
-                  </Button>
-                  <Button onClick={() => handleDecision('CONFIRM')} disabled={isUpdatingDecision} className="w-full">
-                    {isUpdatingDecision ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirmar contratación'}
-                  </Button>
-                </div>
+                <Button onClick={() => handleDecision('CONFIRM')} disabled={isUpdatingDecision} className="w-full">
+                  {isUpdatingDecision ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirmar contratación'}
+                </Button>
               </div>
 
               <Card className="p-4 bg-white border border-slate-200 space-y-2">

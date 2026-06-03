@@ -302,6 +302,12 @@ export class JobsService {
 
     if (contractError) throw new BadRequestException(contractError.message);
     if (!existingContract) throw new BadRequestException('No existe una contratacion asociada a esta conversacion');
+    if (actorRole === 'CLIENT') {
+      throw new BadRequestException('Solo el trabajador puede registrar el acuerdo');
+    }
+    if (existingContract.estado_contratacion !== 'Confirmada') {
+      throw new BadRequestException('El acuerdo solo puede guardarse cuando la contratacion esta confirmada');
+    }
 
     const normalizedPrice = data.precioFinalAcordado === undefined || data.precioFinalAcordado === null
       ? null
