@@ -451,11 +451,10 @@ const LandingPage = ({ onStart }: { onStart: (role: UserRole | null, isLogin: bo
       </div>
       
       <h1 className="text-6xl font-extrabold text-primary tracking-tight leading-tight">
-        Conectamos profesionales <span className="text-accent underline decoration-4 underline-offset-8">de oficio </span>con tus necesidades.
+        Conectamos trabajadores <span className="text-accent underline decoration-4 underline-offset-8">de oficio </span>con tus necesidades.
       </h1>
       <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-        La plataforma más confiable para encontrar profesionales de oficios en tu zona. 
-        Seguridad garantizada, transparencia absoluta y validación rigurosa de identidad.
+        Busca trabajadores que te brinden la solucion a tu problema, o encuentra oportunidades laborales que se ajusten a tu experiencia y reputacion. Sin vueltas, con transparencia y resultados efectivos.
       </p>
 
       <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
