@@ -121,7 +121,7 @@ export class JobsService {
     if (error) throw new BadRequestException(error.message);
 
     const enriched = await Promise.all((conversations || []).map(async (conversation: any) => {
-      const [lastMessageResult, unreadCountResult, contractResult] = await Promise.all([
+      const [lastMessageResult, unreadCountResult, contractResult, counterpartResult] = await Promise.all([
         this.client
           .from('mensajes')
           .select('*')
@@ -140,17 +140,35 @@ export class JobsService {
           .select('*')
           .eq('id_conversacion', conversation.id_conversacion)
           .maybeSingle(),
+        role === 'CLIENT'
+          ? this.client
+              .from('trabajadores')
+              .select('nombre_y_apellido_trabajador')
+              .eq('id_trabajador', conversation.id_trabajador)
+              .maybeSingle()
+          : this.client
+              .from('clientes')
+              .select('nombre_y_apellido_cliente')
+              .eq('id_cliente', conversation.id_cliente)
+              .maybeSingle(),
       ]);
 
       if (lastMessageResult.error) throw new BadRequestException(lastMessageResult.error.message);
       if (unreadCountResult.error) throw new BadRequestException(unreadCountResult.error.message);
       if (contractResult.error) throw new BadRequestException(contractResult.error.message);
 
+      const counterpartName = role === 'CLIENT'
+        ? (counterpartResult.data as any)?.nombre_y_apellido_trabajador
+        : (counterpartResult.data as any)?.nombre_y_apellido_cliente;
+
       return {
         ...conversation,
         last_message: lastMessageResult.data || null,
         unread_count: unreadCountResult.count || 0,
         contract: contractResult.data || null,
+        counterpart_name: counterpartName || null,
+        counterpart_avatar: null,
+        counterpart_score: null,
       };
     }));
 
