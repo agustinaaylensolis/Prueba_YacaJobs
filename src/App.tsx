@@ -1670,8 +1670,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 };
 
 const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
-  const [activeTab, setActiveTab] = useState<'forum' | 'profile'>('forum');
-  const [workerActiveTab, setWorkerActiveTab] = useState<'forum' | 'profile' | 'messages'>('forum');
+  const [activeTab, setActiveTab] = useState<'forum' | 'profile' | 'messages'>('forum');
   const [forumPosts, setForumPosts] = useState<any[]>([]);
   const [isPostulating, setIsPostulating] = useState<any>(null);
   const [budget, setBudget] = useState({ price: '', materials: '', message: '' });
@@ -1722,12 +1721,12 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   }, []);
 
   const openWorkerConversation = (conversation: any) => {
-    setWorkerActiveTab('messages');
+    setActiveTab('messages');
     setWorkerSelectedConversation(conversation);
   };
 
   const openWorkerConversationToClient = async (clientId: number, publicationId?: number) => {
-    setWorkerActiveTab('messages');
+    setActiveTab('messages');
     setOpeningWorkerConversationId(clientId);
     const res = await fetch('/api/jobs/conversations/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1808,7 +1807,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         <Logo variant={2} />
         <nav className="flex-1 space-y-1">
           <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><MapPin className="w-4 h-4"/> Foro de Trabajos</button>
-          <button onClick={() => setWorkerActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${workerActiveTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+          <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
             <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
             {unreadCountWorker > 0 && <span className="bg-primary text-white text-[12px] px-2 py-0.5 rounded-full">{unreadCountWorker}</span>}
           </button>
@@ -1826,7 +1825,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       </aside>
 
       <main className="flex-1 p-10 space-y-8 overflow-y-auto max-w-5xl mx-auto">
-        {workerActiveTab === 'messages' ? (
+        {activeTab === 'messages' ? (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-3xl font-bold text-primary">Mensajes</h2>
