@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3 } from 'lucide-react';
 import RatingStars from './components/RatingStars';
+import NotificationBell from './components/NotificationBell';
 import { getWorkerRatings, createWorkerRating } from './lib/ratings';
 import { Rating } from './types';
 import { COLORS } from './constants';
@@ -1127,7 +1128,14 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-8">
-        <Logo variant={2} />
+        <div className="flex items-center justify-between">
+          <Logo variant={2} />
+          <NotificationBell 
+            userId={user.id_cliente} 
+            role={UserRole.CLIENT} 
+            onNotificationClick={() => setActiveTab('posts')} 
+          />
+        </div>
         <nav className="flex-1 space-y-1">
           <button onClick={() => setActiveTab('search')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'search' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Search className="w-4 h-4"/> Buscar</button>
           <button onClick={() => setActiveTab('posts')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'posts' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><FileText className="w-4 h-4"/> Mis Pedidos</button>
@@ -1804,7 +1812,14 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <aside className="w-64 bg-white border-r p-6 flex flex-col gap-8">
-        <Logo variant={2} />
+        <div className="flex items-center justify-between">
+          <Logo variant={2} />
+          <NotificationBell 
+            userId={user.id_trabajador} 
+            role={UserRole.WORKER} 
+            onNotificationClick={(id) => { if (id) setActiveTab('forum'); }} 
+          />
+        </div>
         <nav className="flex-1 space-y-1">
           <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><MapPin className="w-4 h-4"/> Foro de Trabajos</button>
           <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>

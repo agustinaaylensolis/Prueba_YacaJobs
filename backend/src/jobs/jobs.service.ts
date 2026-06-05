@@ -4,12 +4,16 @@ import { OpenConversationDto } from './dto/open-conversation.dto.js';
 import { SendMessageDto } from './dto/send-message.dto.js';
 import { ContractAction, UpdateContractStatusDto } from './dto/update-contract-status.dto.js';
 import { UpdateContractAgreementDto } from './dto/update-contract-agreement.dto.js';
+import { JobPostingNotifier } from './observers/job-posting.notifier.js';
 
 type UserRole = 'CLIENT' | 'WORKER';
 
 @Injectable()
 export class JobsService {
-  constructor(@Inject(SupabaseService) private readonly supabaseService: SupabaseService) {}
+  constructor(
+    @Inject(SupabaseService) private readonly supabaseService: SupabaseService,
+    @Inject(JobPostingNotifier) private readonly jobPostingNotifier: JobPostingNotifier
+  ) {}
 
   private get client() {
     return this.supabaseService.getClient();
@@ -574,6 +578,10 @@ export class JobsService {
       .single();
 
     if (error) throw new BadRequestException(error.message);
+    
+    // Notificar a los trabajadores interesados
+    await this.jobPostingNotifier.notify(post);
+    
     return post;
   }
 
