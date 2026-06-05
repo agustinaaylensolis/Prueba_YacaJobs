@@ -106,12 +106,6 @@ const formatDateTime = (value?: string | null) => {
   return new Date(value).toLocaleString();
 };
 
-const formatDateTimeForInput = (value?: string | null) => {
-  if (!value) return '';
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-};
 
 const ConversationModal = ({
   open,
@@ -129,68 +123,56 @@ const ConversationModal = ({
   onSaved?: () => void;
 }) => {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
-  const [contract, setContract] = useState<ContractRecord | null>(conversation?.contract || null);
   const [messageText, setMessageText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isSavingAgreement, setIsSavingAgreement] = useState(false);
-  const [isUpdatingDecision, setIsUpdatingDecision] = useState(false);
   const [notice, setNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
-  const [agreementDraft, setAgreementDraft] = useState({
-    precioFinalAcordado: '',
-    fechaHorarioAcordado: '',
-    materialesIncluidos: '',
-    direccionOZona: '',
-    condicionesEspeciales: '',
-    detalleAcuerdo: '',
-  });
+  const [showContactInfo, setShowContactInfo] = useState(false);
+  const [workerContactInfo, setWorkerContactInfo] = useState<{ phone?: string; email?: string } | null>(null);
+  const [workerContactLoading, setWorkerContactLoading] = useState(false);
 
-  const counterpartName = conversation?.counterpart_name || `Usuario #${currentRole === UserRole.CLIENT ? conversation?.id_trabajador : conversation?.id_cliente}`;
-  const contractState = contract?.estado_contratacion || 'Pendiente';
-
-  const syncAgreementDraft = (record: ContractRecord | null) => {
-    setAgreementDraft({
-      precioFinalAcordado: record?.precio_final_acordado != null ? String(record.precio_final_acordado) : '',
-      fechaHorarioAcordado: formatDateTimeForInput(record?.fecha_horario_acordado),
-      materialesIncluidos: record?.materiales_incluidos == null ? '' : String(record.materiales_incluidos),
-      direccionOZona: record?.direccion_o_zona || '',
-      condicionesEspeciales: record?.condiciones_especiales || '',
-      detalleAcuerdo: record?.detalle_acuerdo || '',
-    });
-  };
+  const counterpartName = conversation?.counterpart_name || 'Usuario';
+  const isClient = currentRole === UserRole.CLIENT;
 
   const loadThread = async () => {
     if (!conversation) return;
     setIsLoading(true);
     try {
-      const [messagesRes, contractRes] = await Promise.all([
-        fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages?role=${currentRole}&userId=${currentUserId}`),
-        fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract?role=${currentRole}&userId=${currentUserId}`),
-      ]);
-
+      const messagesRes = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages?role=${currentRole}&userId=${currentUserId}`);
       if (messagesRes.ok) {
         setMessages(await messagesRes.json());
       } else {
         setMessages([]);
-      }
-
-      if (contractRes.ok) {
-        const nextContract = await contractRes.json();
-        setContract(nextContract);
-        syncAgreementDraft(nextContract);
-      } else {
-        setContract(null);
-        syncAgreementDraft(null);
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  const loadWorkerContact = async () => {
+    if (!conversation || !isClient) return;
+    if (workerContactInfo) {
+      setShowContactInfo((prev) => !prev);
+      return;
+    }
+    setWorkerContactLoading(true);
+    try {
+      const res = await fetch(`/api/jobs/workers/${conversation.id_trabajador}`);
+      if (res.ok) {
+        const profile = await res.json();
+        setWorkerContactInfo({
+          phone: profile.nro_celular_trabajador,
+          email: profile.correo_trabajador,
+        });
+        setShowContactInfo(true);
+      }
+    } finally {
+      setWorkerContactLoading(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!open || !conversation) return;
-    setContract(conversation.contract || null);
-    syncAgreementDraft(conversation.contract || null);
     loadThread();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversation?.id_conversacion]);
@@ -226,93 +208,46 @@ const ConversationModal = ({
     }
   };
 
-  const handleSaveAgreement = async () => {
-    setIsSavingAgreement(true);
-    setNotice({ text: '', type: null });
-    try {
-      const normalizedPrice = agreementDraft.precioFinalAcordado.trim() === '' ? null : Number(agreementDraft.precioFinalAcordado);
-      if (normalizedPrice !== null && Number.isNaN(normalizedPrice)) {
-        setNotice({ text: 'El precio final debe ser numérico.', type: 'error' });
-        return;
-      }
-
-      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/agreement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actorId: currentUserId,
-          actorRole: currentRole,
-          precioFinalAcordado: normalizedPrice,
-          fechaHorarioAcordado: agreementDraft.fechaHorarioAcordado || undefined,
-          materialesIncluidos: agreementDraft.materialesIncluidos === '' ? undefined : agreementDraft.materialesIncluidos === 'true',
-          direccionOZona: agreementDraft.direccionOZona || undefined,
-          condicionesEspeciales: agreementDraft.condicionesEspeciales || undefined,
-          detalleAcuerdo: agreementDraft.detalleAcuerdo || undefined,
-        }),
-      });
-
-      if (res.ok) {
-        const nextContract = await res.json();
-        setContract(nextContract);
-        syncAgreementDraft(nextContract);
-        await loadThread();
-        onSaved?.();
-        setNotice({ text: 'Acuerdo guardado correctamente.', type: 'success' });
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        setNotice({ text: errorData.message || 'No se pudo guardar el acuerdo.', type: 'error' });
-      }
-    } finally {
-      setIsSavingAgreement(false);
-    }
-  };
-
-  const handleDecision = async (action: 'CONFIRM' | 'REJECT') => {
-    setIsUpdatingDecision(true);
-    setNotice({ text: '', type: null });
-    try {
-      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actorId: currentUserId,
-          actorRole: currentRole,
-          action,
-          note: agreementDraft.detalleAcuerdo || undefined,
-        }),
-      });
-
-      if (res.ok) {
-        const nextContract = await res.json();
-        setContract(nextContract);
-        await loadThread();
-        onSaved?.();
-        setNotice({ text: action === 'CONFIRM' ? 'Contratación confirmada.' : 'Contratación rechazada.', type: 'success' });
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        setNotice({ text: errorData.message || 'No se pudo actualizar la contratación.', type: 'error' });
-      }
-    } finally {
-      setIsUpdatingDecision(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <motion.div initial={{ opacity: 0, y: 14, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-6xl">
+      <motion.div initial={{ opacity: 0, y: 14, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-4xl">
         <Card className="overflow-hidden bg-white shadow-2xl max-h-[90vh] overflow-y-auto p-0">
+          {/* Header */}
           <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6 md:p-8">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-400">
                 <MessageSquare className="w-4 h-4" /> Mensajería interna
               </div>
               <h3 className="text-3xl font-extrabold text-slate-900 mt-2">{counterpartName}</h3>
-              <p className="text-sm text-slate-500 mt-1">{contractState} · Última actividad {formatDateTime(conversation.ultima_actividad)}</p>
+              <p className="text-sm text-slate-500 mt-1">Última actividad {formatDateTime(conversation.ultima_actividad)}</p>
             </div>
-            <Button variant="ghost" onClick={onClose} className="shrink-0">
-              <X className="w-4 h-4 mr-2" /> Cerrar
-            </Button>
+            <div className="flex items-center gap-2">
+              {isClient && (
+                <Button variant="outline" className="shrink-0" onClick={loadWorkerContact} disabled={workerContactLoading}>
+                  {workerContactLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Phone className="w-4 h-4 mr-2" />}
+                  Contactar
+                </Button>
+              )}
+              <Button variant="ghost" onClick={onClose} className="shrink-0">
+                <X className="w-4 h-4 mr-2" /> Cerrar
+              </Button>
+            </div>
           </div>
+
+          {/* Contact Info Section */}
+          {showContactInfo && workerContactInfo && (
+            <div className="mx-6 mt-6 p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Información de contacto</p>
+              <div className="flex items-center gap-2 text-sm text-slate-700">
+                <Phone className="w-4 h-4 text-primary" />
+                <span>{workerContactInfo.phone || 'No informado'}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-700">
+                <Mail className="w-4 h-4 text-primary" />
+                <span>{workerContactInfo.email || 'No informado'}</span>
+              </div>
+            </div>
+          )}
 
           {notice.text && (
             <div className={`mx-6 mt-6 rounded-2xl p-4 text-sm font-bold ${notice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -320,111 +255,50 @@ const ConversationModal = ({
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
-            <div className="lg:col-span-2 border-r border-slate-200 p-6 md:p-8 space-y-5">
-              <div className="flex items-center justify-between">
-                <h4 className="text-lg font-bold text-slate-900">Chat</h4>
-                <Button variant="ghost" onClick={loadThread} className="text-xs">
-                  <RefreshCw className="w-4 h-4 mr-2" /> Actualizar
-                </Button>
-              </div>
-
-              <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-2">
-                {isLoading ? (
-                  <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
-                ) : messages.length > 0 ? (
-                  messages.map((message) => {
-                    const isMine = (currentRole === 'CLIENT' && Boolean(message.id_emisor_cliente)) || (currentRole === 'WORKER' && Boolean(message.id_emisor_trabajador));
-                    return (
-                      <div key={message.id_mensaje} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] rounded-3xl px-4 py-3 text-sm shadow-sm ${isMine ? 'bg-primary text-white' : 'bg-slate-100 text-slate-800'}`}>
-                          <p className="whitespace-pre-wrap leading-relaxed">{message.contenido_mensaje}</p>
-                          <div className={`mt-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${isMine ? 'text-white/70' : 'text-slate-400'}`}>
-                            <Clock3 className="w-3 h-3" /> {formatDateTime(message.fecha_mensaje)}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="py-20 text-center text-slate-400">Aún no hay mensajes en esta conversación.</div>
-                )}
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <textarea
-                  className="input-soft min-h-28 resize-none"
-                  placeholder="Escribe un mensaje interno..."
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                />
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={onClose}>Salir</Button>
-                  <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim()}>
-                    {isSending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Send className="w-4 h-4 mr-2" /> Enviar mensaje</>}
-                  </Button>
-                </div>
-              </div>
+          {/* Chat Panel */}
+          <div className="p-6 md:p-8 space-y-5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-lg font-bold text-slate-900">Chat</h4>
+              <Button variant="ghost" onClick={loadThread} className="text-xs">
+                <RefreshCw className="w-4 h-4 mr-2" /> Actualizar
+              </Button>
             </div>
 
-            <div className="p-6 md:p-8 space-y-6 bg-slate-50/80">
-              <div className="space-y-2">
-                <h4 className="text-lg font-bold text-slate-900">Acuerdo estructurado</h4>
-                <p className="text-sm text-slate-500">Guardá aquí lo pactado antes de confirmar la contratación.</p>
-              </div>
+            <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-2">
+              {isLoading ? (
+                <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
+              ) : messages.length > 0 ? (
+                messages.map((message) => {
+                  const isMine = (currentRole === 'CLIENT' && Boolean(message.id_emisor_cliente)) || (currentRole === 'WORKER' && Boolean(message.id_emisor_trabajador));
+                  return (
+                    <div key={message.id_mensaje} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] rounded-3xl px-4 py-3 text-sm shadow-sm ${isMine ? 'bg-primary text-white' : 'bg-slate-100 text-slate-800'}`}>
+                        <p className="whitespace-pre-wrap leading-relaxed">{message.contenido_mensaje}</p>
+                        <div className={`mt-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${isMine ? 'text-white/70' : 'text-slate-400'}`}>
+                          <Clock3 className="w-3 h-3" /> {formatDateTime(message.fecha_mensaje)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-20 text-center text-slate-400">Aún no hay mensajes en esta conversación.</div>
+              )}
+            </div>
 
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Precio final acordado</label>
-                  <input className="input-soft" type="number" min="0" value={agreementDraft.precioFinalAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, precioFinalAcordado: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha y horario</label>
-                  <input className="input-soft" type="datetime-local" value={agreementDraft.fechaHorarioAcordado} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, fechaHorarioAcordado: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Materiales incluidos</label>
-                  <select className="input-soft" value={agreementDraft.materialesIncluidos} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, materialesIncluidos: e.target.value }))}>
-                    <option value="">Sin definir</option>
-                    <option value="true">Sí</option>
-                    <option value="false">No</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dirección o zona</label>
-                  <input className="input-soft" value={agreementDraft.direccionOZona} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, direccionOZona: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Condiciones especiales</label>
-                  <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.condicionesEspeciales} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, condicionesEspeciales: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Detalle del acuerdo</label>
-                  <textarea className="input-soft min-h-24 resize-none" value={agreementDraft.detalleAcuerdo} onChange={(e) => setAgreementDraft((prev) => ({ ...prev, detalleAcuerdo: e.target.value }))} />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Button onClick={handleSaveAgreement} disabled={isSavingAgreement} className="w-full">
-                  {isSavingAgreement ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Guardar acuerdo'}
+            <div className="space-y-3 pt-2">
+              <textarea
+                className="input-soft min-h-28 resize-none"
+                placeholder="Escribe un mensaje interno..."
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={onClose}>Salir</Button>
+                <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim()}>
+                  {isSending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Send className="w-4 h-4 mr-2" /> Enviar mensaje</>}
                 </Button>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" onClick={() => handleDecision('REJECT')} disabled={isUpdatingDecision} className="w-full">
-                    {isUpdatingDecision ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Rechazar'}
-                  </Button>
-                  <Button onClick={() => handleDecision('CONFIRM')} disabled={isUpdatingDecision} className="w-full">
-                    {isUpdatingDecision ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirmar contratación'}
-                  </Button>
-                </div>
               </div>
-
-              <Card className="p-4 bg-white border border-slate-200 space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Estado actual</p>
-                <p className="text-sm font-bold text-slate-900">{contractState}</p>
-                <p className="text-xs text-slate-500">Solicitud: {formatDateTime(contract?.fecha_solicitud)}</p>
-                <p className="text-xs text-slate-500">Confirmación: {formatDateTime(contract?.fecha_confirmacion)}</p>
-                <p className="text-xs text-slate-500">Rechazo: {formatDateTime(contract?.fecha_rechazo)}</p>
-              </Card>
             </div>
           </div>
         </Card>
@@ -1373,7 +1247,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     <Card>
                       <div className="flex items-center justify-between">
                         <div>
-                          <h5 className="font-bold text-sm">{c.counterpart_name || `Usuario ${c.id_conversacion}`}</h5>
+                          <h5 className="font-bold text-sm">{c.counterpart_name || 'Usuario'}</h5>
                           <p className="text-xs text-slate-400">{c.last_message?.contenido_mensaje || c.ultimo_mensaje_preview || 'Sin mensajes'}</p>
                         </div>
                         <div className="text-xs text-slate-400">{c.unread_count ? <span className="bg-primary text-white px-2 py-1 rounded-full text-[10px]">{c.unread_count}</span> : null}</div>
@@ -1796,7 +1670,8 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 };
 
 const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
-  const [activeTab, setActiveTab] = useState<'forum' | 'profile' | 'messages'>('forum');
+  const [activeTab, setActiveTab] = useState<'forum' | 'profile'>('forum');
+  const [workerActiveTab, setWorkerActiveTab] = useState<'forum' | 'profile' | 'messages'>('forum');
   const [forumPosts, setForumPosts] = useState<any[]>([]);
   const [isPostulating, setIsPostulating] = useState<any>(null);
   const [budget, setBudget] = useState({ price: '', materials: '', message: '' });
@@ -1829,6 +1704,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [workerSelectedConversation, setWorkerSelectedConversation] = useState<any>(null);
   const [workerMessages, setWorkerMessages] = useState<any[]>([]);
   const [unreadCountWorker, setUnreadCountWorker] = useState(0);
+  const [openingWorkerConversationId, setOpeningWorkerConversationId] = useState<number | null>(null);
 
   const loadWorkerConversations = async () => {
     const res = await fetch(`/api/jobs/conversations?role=WORKER&userId=${user.id_trabajador}`);
@@ -1845,13 +1721,30 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openWorkerConversation = async (conversationId: number) => {
-    const res = await fetch(`/api/jobs/conversations/${conversationId}/messages?role=WORKER&userId=${user.id_trabajador}`);
-    if (res.ok) {
-      const msgs = await res.json();
-      setWorkerSelectedConversation({ id_conversacion: conversationId });
-      setWorkerMessages(msgs);
+  const openWorkerConversation = (conversation: any) => {
+    setWorkerActiveTab('messages');
+    setWorkerSelectedConversation(conversation);
+  };
+
+  const openWorkerConversationToClient = async (clientId: number, publicationId?: number) => {
+    setWorkerActiveTab('messages');
+    setOpeningWorkerConversationId(clientId);
+    const res = await fetch('/api/jobs/conversations/open', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, workerId: user.id_trabajador, publicationId })
+    });
+    if (!res.ok) {
+      setOpeningWorkerConversationId(null);
+      await loadWorkerConversations();
+      return;
     }
+    const payload = await res.json();
+    const convo = payload.conversation || payload;
+    setWorkerSelectedConversation(convo);
+    const msgsRes = await fetch(`/api/jobs/conversations/${convo.id_conversacion}/messages?role=WORKER&userId=${user.id_trabajador}`);
+    if (msgsRes.ok) setWorkerMessages(await msgsRes.json());
+    await loadWorkerConversations();
+    setOpeningWorkerConversationId(null);
   };
 
   const handlePostulate = async () => {
@@ -1915,7 +1808,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         <Logo variant={2} />
         <nav className="flex-1 space-y-1">
           <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><MapPin className="w-4 h-4"/> Foro de Trabajos</button>
-          <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+          <button onClick={() => setWorkerActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${workerActiveTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
             <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
             {unreadCountWorker > 0 && <span className="bg-primary text-white text-[12px] px-2 py-0.5 rounded-full">{unreadCountWorker}</span>}
           </button>
@@ -1933,7 +1826,50 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       </aside>
 
       <main className="flex-1 p-10 space-y-8 overflow-y-auto max-w-5xl mx-auto">
-        {activeTab === 'forum' && (
+        {workerActiveTab === 'messages' ? (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-3xl font-bold text-primary">Mensajes</h2>
+              <Button variant="ghost" onClick={loadWorkerConversations} className="text-xs font-bold gap-2">
+                <RefreshCw className={`w-3 h-3`} /> Actualizar
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-1 space-y-3">
+                {workerConversations.length > 0 ? workerConversations.map((c: ConversationSummary) => (
+                  <div key={c.id_conversacion} className="p-3 hover:shadow-lg cursor-pointer" onClick={() => openWorkerConversation(c)}>
+                    <Card>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h5 className="font-bold text-sm">{c.counterpart_name || 'Usuario'}</h5>
+                          <p className="text-xs text-slate-400">{c.last_message?.contenido_mensaje || c.ultimo_mensaje_preview || 'Sin mensajes'}</p>
+                        </div>
+                        <div className="text-xs text-slate-400">{c.unread_count ? <span className="bg-primary text-white px-2 py-1 rounded-full text-[10px]">{c.unread_count}</span> : null}</div>
+                      </div>
+                    </Card>
+                  </div>
+                )) : (
+                  <div className="py-12 text-center text-slate-400">No hay conversaciones aún.</div>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                {workerSelectedConversation ? (
+                  <ConversationModal open={Boolean(workerSelectedConversation)} conversation={workerSelectedConversation} currentRole={UserRole.WORKER} currentUserId={user.id_trabajador} onClose={() => setWorkerSelectedConversation(null)} onSaved={loadWorkerConversations} />
+                ) : openingWorkerConversationId ? (
+                  <Card className="p-8 text-center text-slate-500 space-y-3">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
+                    <p className="font-bold">Abriendo conversación...</p>
+                    <p className="text-sm">Estamos creando o recuperando el chat con el cliente seleccionado.</p>
+                  </Card>
+                ) : (
+                  <Card className="p-8 text-center text-slate-400">Selecciona una conversación para ver el chat.</Card>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'forum' ? (
           <>
             <div className="flex justify-between items-center">
               <h2 className="text-3xl font-bold text-primary">Trabajos Disponibles</h2>
@@ -2007,48 +1943,8 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               </div>
             )}
           </>
-        )}
-
-        {workerActiveTab === 'messages' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-3xl font-bold text-primary">Mensajes</h2>
-              <Button variant="ghost" onClick={loadWorkerConversations} className="text-xs font-bold gap-2">
-                <RefreshCw className={`w-3 h-3`} /> Actualizar
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-1 space-y-3">
-                {workerConversations.length > 0 ? workerConversations.map((c: ConversationSummary) => (
-                  <div key={c.id_conversacion} className="p-3 hover:shadow-lg cursor-pointer" onClick={async () => { setWorkerSelectedConversation(c); await openWorkerConversation(c.id_conversacion); }}>
-                    <Card>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-bold text-sm">{c.counterpart_name || `Usuario ${c.id_conversacion}`}</h5>
-                          <p className="text-xs text-slate-400">{c.last_message?.contenido_mensaje || c.ultimo_mensaje_preview || 'Sin mensajes'}</p>
-                        </div>
-                        <div className="text-xs text-slate-400">{c.unread_count ? <span className="bg-primary text-white px-2 py-1 rounded-full text-[10px]">{c.unread_count}</span> : null}</div>
-                      </div>
-                    </Card>
-                  </div>
-                )) : (
-                  <div className="py-12 text-center text-slate-400">No hay conversaciones aún.</div>
-                )}
-              </div>
-
-              <div className="md:col-span-2">
-                {workerSelectedConversation ? (
-                  <ConversationModal open={Boolean(workerSelectedConversation)} conversation={workerSelectedConversation} currentRole={UserRole.WORKER} currentUserId={user.id_trabajador} onClose={() => setWorkerSelectedConversation(null)} onSaved={loadWorkerConversations} />
-                ) : (
-                  <Card className="p-8 text-center text-slate-400">Selecciona una conversación para ver el chat.</Card>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'profile' && (
+        ) : (
+          // Profile section
           <div className="max-w-2xl mx-auto space-y-8">
             <h2 className="text-2xl font-bold">Configuración de Perfil</h2>
             {profileNotice.text && (
