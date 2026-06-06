@@ -82,6 +82,11 @@ type ContractRecord = {
   fecha_solicitud?: string | null;
   fecha_confirmacion?: string | null;
   fecha_rechazo?: string | null;
+  monto?: number | null;
+  fecha_hora?: string | null;
+  direccion?: string | null;
+  descripcion?: string | null;
+  descripcion_materiales?: string | null;
 };
 
 type ConversationSummary = {
@@ -113,6 +118,7 @@ const ConversationModal = ({
   conversation,
   currentRole,
   currentUserId,
+  userName,
   onClose,
   onSaved,
 }: {
@@ -120,6 +126,7 @@ const ConversationModal = ({
   conversation: ConversationSummary | null;
   currentRole: UserRole;
   currentUserId: number;
+  userName: string;
   onClose: () => void;
   onSaved?: () => void;
 }) => {
@@ -131,6 +138,23 @@ const ConversationModal = ({
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [workerContactInfo, setWorkerContactInfo] = useState<{ phone?: string; email?: string } | null>(null);
   const [workerContactLoading, setWorkerContactLoading] = useState(false);
+
+  // Estados del Contrato y Propuestas
+  const [currentContract, setCurrentContract] = useState<ContractRecord | null>(conversation?.contract || null);
+  const [showProposalForm, setShowProposalForm] = useState(false);
+  const [proposalFormSending, setProposalFormSending] = useState(false);
+  const [proposalNotice, setProposalNotice] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
+  const [showRejectReasonInput, setShowRejectReasonInput] = useState(false);
+
+  const [proposalData, setProposalData] = useState({
+    fechaHora: '',
+    direccion: '',
+    descripcion: '',
+    monto: '',
+    materialesIncluidos: false,
+    descripcionMateriales: '',
+  });
 
   const counterpartName = conversation?.counterpart_name || 'Usuario';
   const isClient = currentRole === UserRole.CLIENT;
@@ -147,6 +171,18 @@ const ConversationModal = ({
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadContract = async () => {
+    if (!conversation) return;
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract?role=${currentRole}&userId=${currentUserId}`);
+      if (res.ok) {
+        setCurrentContract(await res.json());
+      }
+    } catch (e) {
+      console.error('Error al cargar el contrato:', e);
     }
   };
 
@@ -175,6 +211,7 @@ const ConversationModal = ({
   React.useEffect(() => {
     if (!open || !conversation) return;
     loadThread();
+    loadContract();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversation?.id_conversacion]);
 
@@ -209,10 +246,248 @@ const ConversationModal = ({
     }
   };
 
+  // Acción del Cliente: Aceptar Trabajo (Intención de Contratación)
+  const handleAcceptJobIntent = async () => {
+    setNotice({ text: '', type: null });
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          action: 'INTENT'
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+        
+        // Enviar mensaje automático indicando la intención de contratación
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: '[INTENCIÓN DE CONTRATACIÓN] He aceptado el trabajo. Por favor, envía tu propuesta detallada con precio, fecha y materiales.'
+          })
+        });
+
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setNotice({ text: err.message || 'Error al iniciar la intención de trabajo.', type: 'error' });
+      }
+    } catch {
+      setNotice({ text: 'Error de red.', type: 'error' });
+    }
+  };
+
+  // Acción del Cliente: No contratar (Cancela Intención de Contratación)
+  const handleCancelJobIntent = async () => {
+    setNotice({ text: '', type: null });
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          action: 'CANCEL_INTENT',
+          note: rejectReason
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+
+        // Enviar mensaje automático
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: `[CANCELACIÓN DE INTENCIÓN] No procederé con la contratación. Motivo: ${rejectReason.trim() || 'No especificado'}`
+          })
+        });
+
+        setRejectReason('');
+        setShowRejectReasonInput(false);
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setNotice({ text: err.message || 'Error al cancelar la intención.', type: 'error' });
+      }
+    } catch {
+      setNotice({ text: 'Error de red.', type: 'error' });
+    }
+  };
+
+  // Acción del Trabajador: Enviar Formulario de Propuesta
+  const handleSendProposalForm = async () => {
+    setProposalNotice('');
+    if (!proposalData.monto || Number(proposalData.monto) <= 0) {
+      setProposalNotice('Por favor ingresa un monto válido.');
+      return;
+    }
+    if (!proposalData.fechaHora) {
+      setProposalNotice('Por favor ingresa la fecha y hora.');
+      return;
+    }
+    if (!proposalData.direccion.trim()) {
+      setProposalNotice('Por favor ingresa la dirección.');
+      return;
+    }
+    if (!proposalData.descripcion.trim()) {
+      setProposalNotice('Por favor ingresa una descripción del trabajo.');
+      return;
+    }
+    if (proposalData.materialesIncluidos && !proposalData.descripcionMateriales.trim()) {
+      setProposalNotice('Por favor detalla los materiales incluidos.');
+      return;
+    }
+
+    setProposalFormSending(true);
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/agreement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          fecha_hora: proposalData.fechaHora,
+          direccion: proposalData.direccion,
+          descripcion: proposalData.descripcion,
+          monto: Number(proposalData.monto),
+          materialesIncluidos: proposalData.materialesIncluidos,
+          descripcion_materiales: proposalData.materialesIncluidos ? proposalData.descripcionMateriales : null
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+
+        const materialsText = proposalData.materialesIncluidos 
+          ? `Incluye materiales: ${proposalData.descripcionMateriales}` 
+          : 'No incluye materiales.';
+
+        // Enviar mensaje estructurado al chat
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: `[PROPUESTA DE TRABAJO ENVIADA]\n• Monto: $${proposalData.monto}\n• Fecha/Hora: ${formatDateTime(proposalData.fechaHora)}\n• Dirección: ${proposalData.direccion}\n• Descripción: ${proposalData.descripcion}\n• Materiales: ${materialsText}`
+          })
+        });
+
+        setProposalData({ fechaHora: '', direccion: '', descripcion: '', monto: '', materialesIncluidos: false, descripcionMateriales: '' });
+        setShowProposalForm(false);
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setProposalNotice(err.message || 'Error al enviar la propuesta.');
+      }
+    } catch {
+      setProposalNotice('Error de red al enviar propuesta.');
+    } finally {
+      setProposalFormSending(false);
+    }
+  };
+
+  // Acción del Cliente: Contratar (Confirmación de Propuesta)
+  const handleConfirmContract = async () => {
+    setNotice({ text: '', type: null });
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          action: 'CONFIRM'
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+
+        // Enviar mensaje automático
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: '[CONTRATO CONFIRMADO] ¡He aceptado la propuesta! El trabajo ha sido formalizado.'
+          })
+        });
+
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setNotice({ text: err.message || 'Error al confirmar contratación.', type: 'error' });
+      }
+    } catch {
+      setNotice({ text: 'Error de red.', type: 'error' });
+    }
+  };
+
+  // Acción del Cliente: Cancelar Propuesta (Devolver a Renegociación)
+  const handleRejectProposal = async () => {
+    setNotice({ text: '', type: null });
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          action: 'CANCEL_PROPOSAL'
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+
+        // Enviar mensaje automático
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: '[PROPUESTA RECHAZADA] He rechazado la propuesta actual. Por favor, renegociemos los términos.'
+          })
+        });
+
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setNotice({ text: err.message || 'Error al cancelar la propuesta.', type: 'error' });
+      }
+    } catch {
+      setNotice({ text: 'Error de red.', type: 'error' });
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0, y: 14, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-4xl">
-        <Card className="overflow-hidden bg-white shadow-2xl max-h-[90vh] overflow-y-auto p-0">
+        <Card className="overflow-hidden bg-white shadow-2xl max-h-[90vh] overflow-y-auto p-0 relative">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6 md:p-8">
             <div>
@@ -229,9 +504,9 @@ const ConversationModal = ({
                   Contactar
                 </Button>
               )}
-              <Button variant="ghost" onClick={onClose} className="shrink-0">
-                <X className="w-4 h-4 mr-2" /> Cerrar
-              </Button>
+              <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-all cursor-pointer" title="Cerrar modal">
+                <X className="w-6 h-6" />
+              </button>
             </div>
           </div>
 
@@ -249,6 +524,155 @@ const ConversationModal = ({
               </div>
             </div>
           )}
+
+          {/* Panel de Contrato / Negociación */}
+          <div className="bg-slate-50 border-b border-slate-200 p-6 md:px-8 space-y-4">
+            {currentContract?.estado_contratacion === 'Pendiente' && (
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm animate-fade-in">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Estado: Chat Activo</span>
+                  <p className="text-sm text-slate-600 mt-1">
+                    {isClient
+                      ? 'Puedes iniciar una intención de contratación para solicitar una propuesta formal.'
+                      : 'Esperando que el cliente inicie una intención de contratación.'}
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  {isClient ? (
+                    <Button variant="primary" className="bg-emerald-600 hover:bg-emerald-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5" onClick={handleAcceptJobIntent}>
+                      <CheckCircle2 className="w-4 h-4" /> Aceptar trabajo
+                    </Button>
+                  ) : (
+                    <Button variant="outline" className="text-xs py-2 px-4 font-bold border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed" disabled>
+                      Aceptar pedido
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {currentContract?.estado_contratacion === 'IntencionCliente' && (
+              <div className="flex flex-col gap-4 p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 shadow-sm animate-fade-in">
+                {showRejectReasonInput ? (
+                  <div className="space-y-3">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Motivo del rechazo de la contratación (Opcional):</label>
+                    <textarea
+                      className="input-soft w-full min-h-20 bg-white"
+                      placeholder="Ej: Conseguí otro profesional, presupuesto fuera del rango..."
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" className="text-xs py-2" onClick={() => setShowRejectReasonInput(false)}>Volver</Button>
+                      <Button variant="primary" className="bg-red-600 hover:bg-red-700 text-white text-xs py-2" onClick={handleCancelJobIntent}>
+                        Confirmar no contratar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Estado: Intención de Contratación</span>
+                      <p className="text-sm text-slate-700 mt-1">
+                        {isClient
+                          ? 'Has enviado una solicitud de contratación. Esperando propuesta del trabajador.'
+                          : 'El cliente solicita tus servicios. Acepta el pedido para detallar tu propuesta de trabajo.'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      {isClient ? (
+                        <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" onClick={() => setShowRejectReasonInput(true)}>
+                          No contratar
+                        </Button>
+                      ) : (
+                        <Button variant="primary" className="bg-indigo-600 hover:bg-indigo-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5" onClick={() => setShowProposalForm(true)}>
+                          <Briefcase className="w-4 h-4" /> Aceptar pedido
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {currentContract?.estado_contratacion === 'PropuestaEnviada' && (
+              <div className="p-6 rounded-2xl bg-amber-50/50 border border-amber-200 shadow-sm space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between border-b border-amber-200/50 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Propuesta de Trabajo</span>
+                  <div className="text-lg font-black text-amber-900">${currentContract.monto}</div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-1">
+                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Fecha y Hora</span>
+                    <span className="text-slate-800 font-medium">{formatDateTime(currentContract.fecha_hora)}</span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Dirección</span>
+                    <span className="text-slate-800 font-medium">{currentContract.direccion}</span>
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Descripción del Trabajo</span>
+                    <p className="text-slate-800 bg-white/60 p-2.5 rounded-xl border border-slate-100 italic leading-relaxed">"{currentContract.descripcion}"</p>
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Materiales Incluidos</span>
+                    <span className="text-slate-800 font-medium block">
+                      {currentContract.materiales_incluidos ? (
+                        <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-[10px] font-bold">Sí</span>
+                      ) : (
+                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[10px] font-bold">No</span>
+                      )}
+                    </span>
+                    {currentContract.materiales_incluidos && currentContract.descripcion_materiales && (
+                      <p className="text-slate-700 bg-white/60 p-2.5 rounded-xl border border-slate-100 mt-1 italic">
+                        Detalles: {currentContract.descripcion_materiales}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 border-t border-amber-200/50 pt-3">
+                  {isClient ? (
+                    <>
+                      <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" onClick={handleRejectProposal}>
+                        Cancelar
+                      </Button>
+                      <Button variant="primary" className="bg-emerald-600 hover:bg-emerald-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5" onClick={handleConfirmContract}>
+                        <CheckCircle2 className="w-4 h-4" /> Contratar
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-amber-800 font-semibold italic">Esperando decisión del cliente sobre la propuesta.</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {currentContract?.estado_contratacion === 'Confirmada' && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-center gap-3 animate-fade-in">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="font-bold text-sm text-emerald-800">✓ Contrato Confirmado</h5>
+                  <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
+                </div>
+              </div>
+            )}
+
+            {currentContract?.estado_contratacion === 'Rechazada' && (
+              <div className="p-4 rounded-2xl bg-red-50 border border-red-200 shadow-sm flex items-center gap-3 animate-fade-in">
+                <div className="p-2 bg-red-100 text-red-700 rounded-full">
+                  <X className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="font-bold text-sm text-red-800">✕ Contrato Cancelado</h5>
+                  <p className="text-xs text-red-600">Este contrato ha sido rechazado/cancelado de manera definitiva.</p>
+                </div>
+              </div>
+            )}
+          </div>
 
           {notice.text && (
             <div className={`mx-6 mt-6 rounded-2xl p-4 text-sm font-bold ${notice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -295,13 +719,132 @@ const ConversationModal = ({
                 onChange={(e) => setMessageText(e.target.value)}
               />
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={onClose}>Salir</Button>
                 <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim()}>
                   {isSending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Send className="w-4 h-4 mr-2" /> Enviar mensaje</>}
                 </Button>
               </div>
             </div>
           </div>
+
+          {/* Modal de Propuesta del Trabajador */}
+          {showProposalForm && (
+            <div className="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
+                <Card className="p-6 bg-white shadow-2xl space-y-6">
+                  <div className="flex justify-between items-center border-b pb-3">
+                    <h3 className="text-xl font-bold text-primary flex items-center gap-2">
+                      <Briefcase className="w-5 h-5" /> Propuesta de Trabajo
+                    </h3>
+                    <button onClick={() => setShowProposalForm(false)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 cursor-pointer">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Header de Lectura */}
+                  <div className="bg-slate-50 p-4 rounded-2xl space-y-2 border border-slate-100">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <div>
+                        <span className="font-bold uppercase block text-[9px] text-slate-400">Cliente</span>
+                        <span className="font-bold text-slate-800 text-sm">{counterpartName}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold uppercase block text-[9px] text-slate-400">Trabajador</span>
+                        <span className="font-bold text-slate-800 text-sm">{userName}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {proposalNotice && (
+                    <div className="p-3 bg-red-100 text-red-700 rounded-xl text-xs font-bold">{proposalNotice}</div>
+                  )}
+
+                  {/* Form Fields */}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha y Hora</label>
+                        <input
+                          type="datetime-local"
+                          className="input-soft"
+                          value={proposalData.fechaHora}
+                          onChange={(e) => setProposalData({ ...proposalData, fechaHora: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Monto ($)</label>
+                        <input
+                          type="number"
+                          placeholder="Monto final"
+                          className="input-soft"
+                          value={proposalData.monto}
+                          onChange={(e) => setProposalData({ ...proposalData, monto: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Dirección / Zona del Trabajo</label>
+                      <input
+                        type="text"
+                        placeholder="Dirección exacta"
+                        className="input-soft"
+                        value={proposalData.direccion}
+                        onChange={(e) => setProposalData({ ...proposalData, direccion: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Descripción detallada</label>
+                      <textarea
+                        placeholder="Describe el trabajo a realizar..."
+                        className="input-soft min-h-20 resize-none"
+                        value={proposalData.descripcion}
+                        onChange={(e) => setProposalData({ ...proposalData, descripcion: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="space-y-2 border-t pt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-600">¿Incluye Materiales?</span>
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-primary accent-primary cursor-pointer"
+                          checked={proposalData.materialesIncluidos}
+                          onChange={(e) => setProposalData({ ...proposalData, materialesIncluidos: e.target.checked })}
+                        />
+                      </div>
+
+                      {proposalData.materialesIncluidos && (
+                        <div className="space-y-1 mt-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Detalle de Materiales</label>
+                          <textarea
+                            placeholder="Detalla los materiales incluidos (ej: Cables, caños, etc.)..."
+                            className="input-soft min-h-16 resize-none"
+                            value={proposalData.descripcionMateriales}
+                            onChange={(e) => setProposalData({ ...proposalData, descripcionMateriales: e.target.value })}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2 border-t">
+                    <Button variant="ghost" className="flex-1 text-xs py-2.5" onClick={() => setShowProposalForm(false)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="flex-1 text-xs py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                      onClick={handleSendProposalForm}
+                      disabled={proposalFormSending}
+                    >
+                      {proposalFormSending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Enviar propuesta'}
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            </div>
+          )}
         </Card>
       </motion.div>
     </div>
@@ -1227,7 +1770,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <Button variant="secondary" className="w-full text-xs" onClick={() => handleViewWorkerProfile(w.id_trabajador)}>Ver Perfil</Button>
-                      <Button className="w-full text-xs" onClick={() => openConversation(w.id_trabajador)}>Contratar</Button>
+                      <Button className="w-full text-xs" onClick={() => openConversation(w.id_trabajador)}>Contactar</Button>
                     </div>
                  </Card>
                )}) : (
@@ -1269,7 +1812,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
               <div className="md:col-span-2">
                 {selectedConversation ? (
-                  <ConversationModal open={Boolean(selectedConversation)} conversation={selectedConversation} currentRole={UserRole.CLIENT} currentUserId={user.id_cliente} onClose={() => setSelectedConversation(null)} onSaved={loadConversations} />
+                  <ConversationModal open={Boolean(selectedConversation)} conversation={selectedConversation} currentRole={UserRole.CLIENT} currentUserId={user.id_cliente} userName={user.name} onClose={() => setSelectedConversation(null)} onSaved={loadConversations} />
                 ) : openingConversationId ? (
                   <Card className="p-8 text-center text-slate-500 space-y-3">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
@@ -1870,7 +2413,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
               <div className="md:col-span-2">
                 {workerSelectedConversation ? (
-                  <ConversationModal open={Boolean(workerSelectedConversation)} conversation={workerSelectedConversation} currentRole={UserRole.WORKER} currentUserId={user.id_trabajador} onClose={() => setWorkerSelectedConversation(null)} onSaved={loadWorkerConversations} />
+                  <ConversationModal open={Boolean(workerSelectedConversation)} conversation={workerSelectedConversation} currentRole={UserRole.WORKER} currentUserId={user.id_trabajador} userName={user.name} onClose={() => setWorkerSelectedConversation(null)} onSaved={loadWorkerConversations} />
                 ) : openingWorkerConversationId ? (
                   <Card className="p-8 text-center text-slate-500 space-y-3">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />

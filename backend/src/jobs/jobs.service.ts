@@ -73,23 +73,13 @@ export class JobsService {
       throw new BadRequestException('Datos numericos invalidos para abrir la conversacion');
     }
 
-    let query = this.client
+    const { data: existingConversation, error: existingError } = await this.client
       .from('conversaciones')
       .select('*')
       .eq('id_cliente', clientId)
-      .eq('id_trabajador', workerId);
+      .eq('id_trabajador', workerId)
+      .maybeSingle();
 
-    if (Number.isFinite(publicationId as number)) {
-      query = query.eq('id_publi', publicationId as number);
-    } else {
-      query = query.is('id_publi', null);
-    }
-
-    if (Number.isFinite(postulationId as number)) {
-      query = query.eq('id_postulacion', postulationId as number);
-    }
-
-    const { data: existingConversation, error: existingError } = await query.maybeSingle();
     if (existingError) throw new BadRequestException(existingError.message);
 
     const conversation = existingConversation || await (async () => {
@@ -117,66 +107,59 @@ export class JobsService {
   async getConversations(role: UserRole, userId: number) {
     const participantField = role === 'CLIENT' ? 'id_cliente' : 'id_trabajador';
     const { data: conversations, error } = await this.client
-      .from('conversaciones')
+      .from('v_resumen_conversaciones')
       .select('*')
       .eq(participantField, userId)
       .order('ultima_actividad', { ascending: false });
 
     if (error) throw new BadRequestException(error.message);
 
-    const enriched = await Promise.all((conversations || []).map(async (conversation: any) => {
-      const [lastMessageResult, unreadCountResult, contractResult, counterpartResult] = await Promise.all([
-        this.client
-          .from('mensajes')
-          .select('*')
-          .eq('id_conversacion', conversation.id_conversacion)
-          .order('fecha_mensaje', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        this.client
-          .from('mensajes')
-          .select('id_mensaje', { count: 'exact', head: true })
-          .eq('id_conversacion', conversation.id_conversacion)
-          .not(role === 'CLIENT' ? 'id_emisor_trabajador' : 'id_emisor_cliente', 'is', null)
-          .is(role === 'CLIENT' ? 'leido_por_cliente_at' : 'leido_por_trabajador_at', null),
-        this.client
-          .from('contrataciones')
-          .select('*')
-          .eq('id_conversacion', conversation.id_conversacion)
-          .maybeSingle(),
-        role === 'CLIENT'
-          ? this.client
-              .from('trabajadores')
-              .select('nombre_y_apellido_trabajador')
-              .eq('id_trabajador', conversation.id_trabajador)
-              .maybeSingle()
-          : this.client
-              .from('clientes')
-              .select('nombre_y_apellido_cliente')
-              .eq('id_cliente', conversation.id_cliente)
-              .maybeSingle(),
-      ]);
-
-      if (lastMessageResult.error) throw new BadRequestException(lastMessageResult.error.message);
-      if (unreadCountResult.error) throw new BadRequestException(unreadCountResult.error.message);
-      if (contractResult.error) throw new BadRequestException(contractResult.error.message);
-
-      const counterpartName = role === 'CLIENT'
-        ? (counterpartResult.data as any)?.nombre_y_apellido_trabajador
-        : (counterpartResult.data as any)?.nombre_y_apellido_cliente;
+    return (conversations || []).map((row: any) => {
+      // Intentar obtener el último mensaje de la conversación para la vista previa
+      const lastMessage = row.ultimo_mensaje_preview ? {
+        id_mensaje: 0, // id dummy ya que no es crucial para el preview del frontend
+        id_conversacion: row.id_conversacion,
+        contenido_mensaje: row.ultimo_mensaje_preview,
+        fecha_mensaje: row.ultima_actividad,
+      } : null;
 
       return {
-        ...conversation,
-        last_message: lastMessageResult.data || null,
-        unread_count: unreadCountResult.count || 0,
-        contract: contractResult.data || null,
-        counterpart_name: counterpartName || null,
-        counterpart_avatar: null,
-        counterpart_score: null,
+        id_conversacion: row.id_conversacion,
+        id_cliente: row.id_cliente,
+        id_trabajador: row.id_trabajador,
+        id_publi: row.id_publi,
+        id_postulacion: row.id_postulacion,
+        estado_conversacion: row.estado_conversacion,
+        ultimo_mensaje_preview: row.ultimo_mensaje_preview,
+        ultima_actividad: row.ultima_actividad,
+        fecha_creacion: row.fecha_creacion,
+        unread_count: role === 'CLIENT' ? row.unread_count_cliente : row.unread_count_trabajador,
+        counterpart_name: role === 'CLIENT' ? row.trabajador_nombre : row.cliente_nombre,
+        counterpart_avatar: role === 'CLIENT' ? row.trabajador_avatar : row.cliente_avatar,
+        counterpart_score: role === 'CLIENT' ? row.trabajador_puntuacion : null,
+        last_message: lastMessage,
+        contract: row.id_contratacion ? {
+          id_contratacion: row.id_contratacion,
+          id_conversacion: row.id_conversacion,
+          id_cliente: row.id_cliente,
+          id_trabajador: row.id_trabajador,
+          estado_contratacion: row.estado_contratacion,
+          monto: row.monto,
+          fecha_hora: row.fecha_hora,
+          direccion: row.direccion,
+          descripcion: row.descripcion,
+          materiales_incluidos: row.materiales_incluidos,
+          descripcion_materiales: row.descripcion_materiales,
+          // Legacy mappings
+          monto_acordado: row.monto_acordado,
+          precio_final_acordado: row.precio_final_acordado,
+          fecha_horario_acordado: row.fecha_horario_acordado,
+          direccion_o_zona: row.direccion_o_zona,
+          condiciones_especiales: row.condiciones_especiales,
+          detalle_acuerdo: row.detalle_acuerdo,
+        } : null,
       };
-    }));
-
-    return enriched;
+    });
   }
 
   async getMessages(conversationId: number, role: UserRole, userId: number) {
@@ -265,7 +248,14 @@ export class JobsService {
       .maybeSingle();
 
     if (error) throw new BadRequestException(error.message);
-    return data;
+    if (!data) return null;
+    return {
+      ...data,
+      monto: data.monto_acordado,
+      fecha_hora: data.fecha_horario_acordado,
+      direccion: data.direccion_o_zona,
+      descripcion: data.detalle_acuerdo,
+    };
   }
 
   async updateContractStatus(conversationId: number, data: UpdateContractStatusDto) {
@@ -283,13 +273,33 @@ export class JobsService {
     if (!existingContract) throw new BadRequestException('No existe una contratacion asociada a esta conversacion');
 
     const now = new Date().toISOString();
-    const nextStatus = data.action === ContractAction.CONFIRM ? 'Confirmada' : 'Rechazada';
+    
+    let nextStatus = 'Pendiente';
+    let shouldCloseConversation = false;
+    let fechaConfirmacion: string | null = null;
+    let fechaRechazo: string | null = null;
+
+    if (data.action === ContractAction.CONFIRM) {
+      nextStatus = 'Confirmada';
+      shouldCloseConversation = true;
+      fechaConfirmacion = now;
+    } else if (data.action === ContractAction.REJECT) {
+      nextStatus = 'Rechazada';
+      shouldCloseConversation = true;
+      fechaRechazo = now;
+    } else if (data.action === ContractAction.INTENT) {
+      nextStatus = 'IntencionCliente';
+    } else if (data.action === ContractAction.CANCEL_INTENT) {
+      nextStatus = 'Pendiente';
+    } else if (data.action === ContractAction.CANCEL_PROPOSAL) {
+      nextStatus = 'IntencionCliente';
+    }
 
     const updatePayload: Record<string, any> = {
       estado_contratacion: nextStatus,
       detalle_acuerdo: data.note || existingContract.detalle_acuerdo || null,
-      fecha_confirmacion: data.action === ContractAction.CONFIRM ? now : null,
-      fecha_rechazo: data.action === ContractAction.REJECT ? now : null,
+      fecha_confirmacion: fechaConfirmacion || existingContract.fecha_confirmacion || null,
+      fecha_rechazo: fechaRechazo || existingContract.fecha_rechazo || null,
     };
 
     const { data: updatedContract, error } = await this.client
@@ -301,14 +311,29 @@ export class JobsService {
 
     if (error) throw new BadRequestException(error.message);
 
+    const conversationUpdate: Record<string, any> = {
+      ultima_actividad: now
+    };
+    if (shouldCloseConversation) {
+      conversationUpdate.estado_conversacion = 'Cerrada';
+    } else {
+      conversationUpdate.estado_conversacion = 'Activa';
+    }
+
     const { error: conversationError } = await this.client
       .from('conversaciones')
-      .update({ estado_conversacion: 'Cerrada', ultima_actividad: now })
+      .update(conversationUpdate)
       .eq('id_conversacion', conversationId);
 
     if (conversationError) throw new BadRequestException(conversationError.message);
 
-    return updatedContract;
+    return {
+      ...updatedContract,
+      monto: updatedContract.monto_acordado,
+      fecha_hora: updatedContract.fecha_horario_acordado,
+      direccion: updatedContract.direccion_o_zona,
+      descripcion: updatedContract.detalle_acuerdo,
+    };
   }
 
   async updateContractAgreement(conversationId: number, data: UpdateContractAgreementDto) {
@@ -325,22 +350,29 @@ export class JobsService {
     if (contractError) throw new BadRequestException(contractError.message);
     if (!existingContract) throw new BadRequestException('No existe una contratacion asociada a esta conversacion');
 
-    const normalizedPrice = data.precioFinalAcordado === undefined || data.precioFinalAcordado === null
-      ? null
-      : Number(data.precioFinalAcordado);
-
-    if (normalizedPrice !== null && Number.isNaN(normalizedPrice)) {
-      throw new BadRequestException('precioFinalAcordado debe ser numerico');
+    const finalMonto = data.monto !== undefined && data.monto !== null 
+      ? Number(data.monto) 
+      : (data.precioFinalAcordado !== undefined && data.precioFinalAcordado !== null ? Number(data.precioFinalAcordado) : null);
+    
+    if (finalMonto !== null && Number.isNaN(finalMonto)) {
+      throw new BadRequestException('El monto debe ser numérico');
     }
 
     const agreementPayload: Record<string, any> = {
-      precio_final_acordado: normalizedPrice,
-      monto_acordado: normalizedPrice,
-      fecha_horario_acordado: data.fechaHorarioAcordado || null,
+      monto_acordado: finalMonto,
+      precio_final_acordado: finalMonto,
+      
+      fecha_horario_acordado: data.fecha_hora || data.fechaHorarioAcordado || null,
+      
+      direccion_o_zona: data.direccion || data.direccionOZona || null,
+      
+      condiciones_especiales: data.descripcion || data.condicionesEspeciales || null,
+      detalle_acuerdo: data.descripcion || data.detalleAcuerdo || null,
+
       materiales_incluidos: data.materialesIncluidos ?? null,
-      direccion_o_zona: data.direccionOZona || null,
-      condiciones_especiales: data.condicionesEspeciales || null,
-      detalle_acuerdo: data.detalleAcuerdo || null,
+      descripcion_materiales: data.descripcion_materiales || null,
+      
+      estado_contratacion: 'PropuestaEnviada',
     };
 
     const { data: updatedContract, error } = await this.client
@@ -353,22 +385,28 @@ export class JobsService {
     if (error) throw new BadRequestException(error.message);
 
     const previewParts = [
-      normalizedPrice !== null ? `Precio $${normalizedPrice}` : null,
-      data.fechaHorarioAcordado ? `Fecha ${data.fechaHorarioAcordado}` : null,
-      data.direccionOZona ? `Zona ${data.direccionOZona}` : null,
+      finalMonto !== null ? `Propuesta $${finalMonto}` : null,
+      (data.fecha_hora || data.fechaHorarioAcordado) ? `Fecha ${data.fecha_hora || data.fechaHorarioAcordado}` : null,
+      (data.direccion || data.direccionOZona) ? `Zona ${data.direccion || data.direccionOZona}` : null,
     ].filter(Boolean);
 
     const { error: conversationError } = await this.client
       .from('conversaciones')
       .update({
-        ultimo_mensaje_preview: previewParts.join(' | ') || 'Acuerdo actualizado',
+        ultimo_mensaje_preview: previewParts.join(' | ') || 'Propuesta detallada enviada',
         ultima_actividad: new Date().toISOString(),
       })
       .eq('id_conversacion', conversationId);
 
     if (conversationError) throw new BadRequestException(conversationError.message);
 
-    return updatedContract;
+    return {
+      ...updatedContract,
+      monto: updatedContract.monto_acordado,
+      fecha_hora: updatedContract.fecha_horario_acordado,
+      direccion: updatedContract.direccion_o_zona,
+      descripcion: updatedContract.detalle_acuerdo,
+    };
   }
 
   async getTrades() {
