@@ -147,6 +147,14 @@ const ConversationModal = ({
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectReasonInput, setShowRejectReasonInput] = useState(false);
 
+  // Estados de Valoración
+  const [showCreateRatingForm, setShowCreateRatingForm] = useState(false);
+  const [newRating, setNewRating] = useState({ puntuacion: 0, comentario: '' });
+  const [newRatingError, setNewRatingError] = useState('');
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+  const [newRatingSuccess, setNewRatingSuccess] = useState('');
+  const [hasAlreadyRated, setHasAlreadyRated] = useState(false);
+
   const [proposalData, setProposalData] = useState({
     fechaHora: '',
     direccion: '',
@@ -208,10 +216,95 @@ const ConversationModal = ({
     }
   };
 
+  const checkExistingRating = async () => {
+    if (!isClient || !conversation) return;
+    try {
+      const { data, error } = await supabase
+        .from('valoraciones')
+        .select('id_valoracion')
+        .eq('id_emisor_cliente', currentUserId)
+        .eq('id_receptor_trabajador', conversation.id_trabajador);
+      if (!error && data && data.length > 0) {
+        setHasAlreadyRated(true);
+      } else {
+        setHasAlreadyRated(false);
+      }
+    } catch (e) {
+      console.error('Error checking rating:', e);
+    }
+  };
+
+  const handleCreateWorkerRating = async () => {
+    if (newRating.puntuacion < 1 || newRating.puntuacion > 5) {
+      setNewRatingError('La puntuación debe ser entre 1 y 5 estrellas.');
+      return;
+    }
+    if (newRating.comentario.length > 500) {
+      setNewRatingError('El comentario no puede exceder los 500 caracteres.');
+      return;
+    }
+
+    setIsSubmittingRating(true);
+    setNewRatingError('');
+    setNewRatingSuccess('');
+
+    try {
+      await createWorkerRating({
+        puntuacion: newRating.puntuacion,
+        comentario: newRating.comentario.trim() || null,
+        id_emisor_cliente: currentUserId,
+        id_receptor_trabajador: conversation.id_trabajador,
+      });
+
+      setNewRatingSuccess('¡Valoración enviada con éxito!');
+      setNewRating({ puntuacion: 0, comentario: '' });
+      setHasAlreadyRated(true);
+      setShowCreateRatingForm(false);
+      onSaved?.();
+    } catch (error: any) {
+      setNewRatingError(error.message || 'Error al enviar la valoración. Intenta nuevamente.');
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!open || !conversation) return;
     loadThread();
     loadContract();
+    checkExistingRating();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, conversation?.id_conversacion]);
+
+  // Supabase Realtime: subscribe to new messages for this conversation
+  React.useEffect(() => {
+    if (!open || !conversation) return;
+
+    const channel = supabase
+      .channel(`mensajes:conv:${conversation.id_conversacion}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'mensajes',
+          filter: `id_conversacion=eq.${conversation.id_conversacion}`,
+        },
+        (payload) => {
+          setMessages((prev) => {
+            // Avoid duplicates if the message is already in the list
+            if (prev.some((m) => m.id_mensaje === (payload.new as MessageRecord).id_mensaje)) {
+              return prev;
+            }
+            return [...prev, payload.new as MessageRecord];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversation?.id_conversacion]);
 
@@ -525,8 +618,47 @@ const ConversationModal = ({
 
   const isContractConfirmed = currentContract?.estado_contratacion === 'Confirmada';
   const eventDateString = currentContract?.fecha_hora || currentContract?.fecha_horario_acordado;
-  const timeToEvent = eventDateString ? new Date(eventDateString as string).getTime() - Date.now() : null;
-  const canCancel = isContractConfirmed && timeToEvent !== null && timeToEvent >= 60 * 60 * 1000;
+  
+  let timeToEvent: number | null = null;
+  let isCancelDisabled = false;
+
+  if (eventDateString) {
+    let str = eventDateString as string;
+    // Forzamos el uso de la 'T' para formato ISO
+    str = str.replace(' ', 'T');
+    
+    // Eliminamos cualquier offset de zona horaria (Z o +00:00) tomando solo los primeros 19 caracteres (YYYY-MM-DDTHH:mm:ss)
+    // Esto asegura que el navegador interprete la fecha en la misma zona horaria local en la que el usuario la ingresó
+    str = str.substring(0, 19);
+    
+    const contractDate = new Date(str);
+    const timeRemaining = contractDate.getTime() - Date.now();
+    isCancelDisabled = timeRemaining <= 3600000; // 1 hora en ms
+    timeToEvent = timeRemaining;
+
+    console.log('[DEBUG CANCELAR CONTRATO]', {
+      rawDate: eventDateString,
+      parsedContractDate: contractDate.toLocaleString(),
+      now: new Date().toLocaleString(),
+      diffMinutes: Math.floor(timeRemaining / 60000),
+      isCancelDisabled
+    });
+  }
+
+  const canCancel = isContractConfirmed && timeToEvent !== null && !isCancelDisabled;
+
+  const isTimeEligible = React.useMemo(() => {
+    // Solo habilitar la calificación si ya pasó más de 1 hora desde el inicio del trabajo.
+    // Como timeToEvent = contractDate - Date.now(), si ya pasó 1 hora, el resultado es <= -3600000.
+    return timeToEvent !== null && timeToEvent <= -3600000;
+  }, [timeToEvent]);
+
+  // Mutual interaction rule: both client and worker must have sent at least one message
+  const bothParticipated = React.useMemo(() => {
+    const clientSent = messages.some((m) => m.id_emisor_cliente != null);
+    const workerSent = messages.some((m) => m.id_emisor_trabajador != null);
+    return clientSent && workerSent;
+  }, [messages]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -571,21 +703,41 @@ const ConversationModal = ({
 
           {/* Panel de Contrato / Negociación */}
           <div className="bg-slate-50 border-b border-slate-200 p-6 md:px-8 space-y-4">
-            {currentContract?.estado_contratacion === 'Pendiente' && (
+            {(currentContract?.estado_contratacion === 'Pendiente' || currentContract?.estado_contratacion === 'Cancelada') && (
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm animate-fade-in">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Estado: Chat Activo</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    {currentContract?.estado_contratacion === 'Cancelada' ? 'Estado: Contrato Cancelado' : 'Estado: Chat Activo'}
+                  </span>
                   <p className="text-sm text-slate-600 mt-1">
-                    {isClient
-                      ? 'Puedes iniciar una intención de contratación para solicitar una propuesta formal.'
-                      : 'Esperando que el cliente inicie una intención de contratación.'}
+                    {currentContract?.estado_contratacion === 'Cancelada' ? (
+                      isClient
+                        ? 'El contrato anterior fue cancelado. Puedes volver a contratar para solicitar una propuesta formal.'
+                        : 'El contrato anterior fue cancelado. Esperando que el cliente inicie una intención de contratación.'
+                    ) : (
+                      isClient
+                        ? 'Puedes iniciar una intención de contratación para solicitar una propuesta formal.'
+                        : 'Esperando que el cliente inicie una intención de contratación.'
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {isClient ? (
-                    <Button variant="primary" className="bg-emerald-600 hover:bg-emerald-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5" onClick={handleAcceptJobIntent}>
-                      <CheckCircle2 className="w-4 h-4" /> Aceptar trabajo
-                    </Button>
+                    <>
+                      <Button
+                        variant="primary"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5 disabled:opacity-40"
+                        onClick={handleAcceptJobIntent}
+                        disabled={!bothParticipated}
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> {currentContract?.estado_contratacion === 'Cancelada' ? 'Volver a contratar' : 'Aceptar trabajo'}
+                      </Button>
+                      {!bothParticipated && (
+                        <p className="text-[10px] text-slate-400 font-semibold self-center max-w-[140px] leading-tight">
+                          Ambas partes deben haber escrito al menos un mensaje.
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <Button variant="outline" className="text-xs py-2 px-4 font-bold border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed" disabled>
                       Aceptar pedido
@@ -694,42 +846,123 @@ const ConversationModal = ({
             )}
 
             {currentContract?.estado_contratacion === 'Confirmada' && (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
-                    <CheckCircle2 className="w-5 h-5" />
+              <div className="space-y-4 w-full">
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-sm text-emerald-800">✓ Contrato Confirmado</h5>
+                      <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
+                    </div>
                   </div>
-                  <div>
-                    <h5 className="font-bold text-sm text-emerald-800">✓ Contrato Confirmado</h5>
-                    <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
+                  <div className="shrink-0 flex flex-col items-end">
+                    <Button 
+                      variant="outline" 
+                      className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" 
+                      onClick={handleCancelConfirmedContract}
+                      disabled={!canCancel}
+                    >
+                      Cancelar contrato
+                    </Button>
+                    {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
+                      <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
+                        No es posible cancelar con menos de 1 hora de anticipación.
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div className="shrink-0 flex flex-col items-end">
-                  <Button 
-                    variant="outline" 
-                    className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" 
-                    onClick={handleCancelConfirmedContract}
-                    disabled={!canCancel}
-                  >
-                    Cancelar contrato
-                  </Button>
-                  {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
-                    <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
-                      No es posible cancelar con menos de 1 hora de anticipación.
-                    </span>
-                  )}
-                </div>
+
+                {isClient && isTimeEligible && !hasAlreadyRated && (
+                  <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-4 animate-fade-in">
+                    {!showCreateRatingForm ? (
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <h6 className="font-bold text-sm text-primary">¿Cómo fue tu experiencia?</h6>
+                          <p className="text-xs text-slate-500">Ya puedes calificar a este trabajador por el servicio realizado.</p>
+                        </div>
+                        <Button variant="primary" className="text-xs font-bold py-2 px-4 shrink-0" onClick={() => setShowCreateRatingForm(true)}>
+                          Calificar trabajador
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h6 className="font-bold text-sm text-primary">Calificar a {counterpartName}</h6>
+                          <button onClick={() => setShowCreateRatingForm(false)} className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer">
+                            Cancelar
+                          </button>
+                        </div>
+                        
+                        {newRatingError && (
+                          <div className="bg-red-100 text-red-700 p-3 rounded-xl text-xs font-bold">
+                            {newRatingError}
+                          </div>
+                        )}
+                        {newRatingSuccess && (
+                          <div className="bg-green-100 text-green-700 p-3 rounded-xl text-xs font-bold">
+                            {newRatingSuccess}
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-slate-700">Tu puntuación:</label>
+                          <RatingStars
+                            rating={newRating.puntuacion}
+                            onRatingChange={(r) => setNewRating({ ...newRating, puntuacion: r })}
+                            editable
+                            size={5}
+                          />
+                          {newRating.puntuacion === 0 && newRatingError.includes('puntuación') && (
+                            <p className="text-[10px] text-red-600 font-semibold mt-1">La puntuación es obligatoria.</p>
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-slate-700">Comentario (opcional):</label>
+                          <textarea
+                            className="input-soft min-h-20 resize-none bg-white"
+                            placeholder="Comparte tu experiencia..."
+                            maxLength={500}
+                            value={newRating.comentario}
+                            onChange={(e) => setNewRating({ ...newRating, comentario: e.target.value })}
+                          />
+                          <p className="text-[10px] text-slate-500 text-right">
+                            {newRating.comentario.length}/500
+                          </p>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={handleCreateWorkerRating}
+                            disabled={isSubmittingRating || newRating.puntuacion === 0}
+                            className="text-xs py-2 px-4"
+                          >
+                            {isSubmittingRating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar valoración'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isClient && hasAlreadyRated && (
+                  <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold text-center">
+                    ✓ Ya has calificado a este trabajador por este servicio.
+                  </div>
+                )}
               </div>
             )}
 
-            {(currentContract?.estado_contratacion === 'Rechazada' || currentContract?.estado_contratacion === 'Cancelada') && (
+            {currentContract?.estado_contratacion === 'Rechazada' && (
               <div className="p-4 rounded-2xl bg-red-50 border border-red-200 shadow-sm flex items-center gap-3 animate-fade-in">
                 <div className="p-2 bg-red-100 text-red-700 rounded-full">
                   <X className="w-5 h-5" />
                 </div>
                 <div>
-                  <h5 className="font-bold text-sm text-red-800">✕ Contrato Cancelado</h5>
-                  <p className="text-xs text-red-600">Este contrato ha sido rechazado/cancelado de manera definitiva.</p>
+                  <h5 className="font-bold text-sm text-red-800">✕ Contrato Rechazado</h5>
+                  <p className="text-xs text-red-600">Este contrato ha sido rechazado de manera definitiva.</p>
                 </div>
               </div>
             )}
@@ -778,10 +1011,10 @@ const ConversationModal = ({
                 placeholder="Escribe un mensaje interno..."
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                disabled={currentContract?.estado_contratacion === 'Rechazada' || currentContract?.estado_contratacion === 'Cancelada'}
+                disabled={currentContract?.estado_contratacion === 'Rechazada'}
               />
               <div className="flex justify-end gap-2">
-                <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim() || currentContract?.estado_contratacion === 'Rechazada' || currentContract?.estado_contratacion === 'Cancelada'}>
+                <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim() || currentContract?.estado_contratacion === 'Rechazada'}>
                   {isSending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Send className="w-4 h-4 mr-2" /> Enviar mensaje</>}
                 </Button>
               </div>
@@ -1408,11 +1641,6 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [workerProfileError, setWorkerProfileError] = useState('');
   const [workerRatings, setWorkerRatings] = useState<Rating[]>([]);
   const [isLoadingWorkerRatings, setIsLoadingWorkerRatings] = useState(false);
-  const [showCreateRatingForm, setShowCreateRatingForm] = useState(false);
-  const [newRating, setNewRating] = useState({ puntuacion: 0, comentario: '' });
-  const [newRatingError, setNewRatingError] = useState('');
-  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
-  const [newRatingSuccess, setNewRatingSuccess] = useState('');
 
   const loadInitial = async () => {
     const clientId = Number(user?.id_cliente);
@@ -1601,60 +1829,11 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     setWorkerProfileError('');
     setIsLoadingWorkerProfile(false);
     setWorkerRatings([]); // Limpiar ratings al cerrar el perfil
-    setShowCreateRatingForm(false); // Limpiar formulario de rating
-    setNewRating({ puntuacion: 0, comentario: '' });
-    setNewRatingError('');
-    setNewRatingSuccess('');
   };
 
   const workerProfileOpen = Boolean(selectedWorkerProfile || workerProfileError || isLoadingWorkerProfile);
 
-  const handleCreateWorkerRating = async () => {
-    if (!user?.id_cliente) {
-      setNewRatingError('Debes iniciar sesión como cliente para valorar.');
-      return;
-    }
-    if (newRating.puntuacion < 1 || newRating.puntuacion > 5) {
-      setNewRatingError('La puntuación debe ser entre 1 y 5 estrellas.');
-      return;
-    }
-    if (newRating.comentario.length > 500) {
-      setNewRatingError('El comentario no puede exceder los 500 caracteres.');
-      return;
-    }
 
-    setIsSubmittingRating(true);
-    setNewRatingError('');
-    setNewRatingSuccess('');
-
-    try {
-      const createdRating = await createWorkerRating({
-        puntuacion: newRating.puntuacion,
-        comentario: newRating.comentario.trim() || null,
-        id_emisor_cliente: user.id_cliente,
-        id_receptor_trabajador: selectedWorkerProfile?.id_trabajador as number,
-      });
-
-      setNewRatingSuccess('¡Valoración enviada con éxito!');
-      setNewRating({ puntuacion: 0, comentario: '' });
-      setShowCreateRatingForm(false);
-
-      // Actualizar la lista de valoraciones y el perfil del trabajador
-      // Re-fetch del perfil para actualizar el promedio y la cantidad de valoraciones
-      // y re-fetch de las valoraciones detalladas
-      if (selectedWorkerProfile?.id_trabajador) {
-        const updatedProfile = await SearchStrategyFactory.create('profile').execute({ workerId: selectedWorkerProfile.id_trabajador });
-        setSelectedWorkerProfile(updatedProfile);
-        const updatedRatings = await getWorkerRatings(selectedWorkerProfile.id_trabajador);
-        setWorkerRatings(updatedRatings);
-      }
-
-    } catch (error: any) {
-      setNewRatingError(error.message || 'Error al enviar la valoración. Intenta nuevamente.');
-    } finally {
-      setIsSubmittingRating(false);
-    }
-  };
 
   // Mensajería
   const [conversations, setConversations] = useState<any[]>([]);
@@ -1704,9 +1883,14 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       return;
     }
     const payload = await res.json();
-    const convo = payload.conversation || payload;
+    // Backend returns { conversation: {..., counterpart_name, contract}, contract }
+    // Merge contract into the conversation object so ConversationModal has it immediately.
+    const rawConvo = payload.conversation || payload;
+    const convo: ConversationSummary = {
+      ...rawConvo,
+      contract: rawConvo.contract ?? payload.contract ?? null,
+    };
     setSelectedConversation(convo);
-    await loadMessages(convo.id_conversacion);
     await loadConversations();
     setOpeningConversationId(null);
   };
@@ -2146,66 +2330,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                           )}
                         </section>
 
-                        {/* Sección de Crear Valoración */}
-                        <section className="space-y-4">
-                          <h4 className="text-3xl font-extrabold text-slate-900">Dejar una valoración</h4>
-                          {!showCreateRatingForm && (
-                            <Button onClick={() => setShowCreateRatingForm(true)}>Valorar trabajador</Button>
-                          )}
-
-                          {showCreateRatingForm && (
-                            <Card className="p-6 space-y-4 border border-primary/20 bg-primary/5">
-                              {newRatingError && (
-                                <div className="bg-red-100 text-red-700 p-3 rounded-xl text-sm font-bold">
-                                  {newRatingError}
-                                </div>
-                              )}
-                              {newRatingSuccess && (
-                                <div className="bg-green-100 text-green-700 p-3 rounded-xl text-sm font-bold">
-                                  {newRatingSuccess}
-                                </div>
-                              )}
-                              <div className="space-y-2">
-                                <label className="text-sm font-semibold text-slate-700">Tu puntuación:</label>
-                                <RatingStars
-                                  rating={newRating.puntuacion}
-                                  onRatingChange={(r) => setNewRating({ ...newRating, puntuacion: r })}
-                                  editable
-                                  size={6}
-                                  className="justify-center"
-                                />
-                                {newRating.puntuacion === 0 && newRatingError.includes('puntuación') && (
-                                  <p className="text-xs text-red-600 font-semibold text-center">La puntuación es obligatoria.</p>
-                                )}
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-sm font-semibold text-slate-700">Comentario (opcional):</label>
-                                <textarea
-                                  className="input-soft min-h-24 resize-none"
-                                  placeholder="Comparte tu experiencia..."
-                                  maxLength={500}
-                                  value={newRating.comentario}
-                                  onChange={(e) => setNewRating({ ...newRating, comentario: e.target.value })}
-                                />
-                                <p className="text-xs text-slate-500 text-right">
-                                  {newRating.comentario.length}/500
-                                </p>
-                                {newRatingError.includes('comentario') && (
-                                  <p className="text-xs text-red-600 font-semibold">{newRatingError}</p>
-                                )}
-                              </div>
-                              <div className="flex justify-end gap-2">
-                                <Button variant="ghost" onClick={() => setShowCreateRatingForm(false)}>Cancelar</Button>
-                                <Button
-                                  onClick={handleCreateWorkerRating}
-                                  disabled={isSubmittingRating || newRating.puntuacion === 0}
-                                >
-                                  {isSubmittingRating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar valoración'}
-                                </Button>
-                              </div>
-                            </Card>
-                          )}
-                        </section>
+                        {/* La sección de valoraciones ha sido trasladada al chat del contrato confirmado */}
                       </>
                     )}
                   </div>

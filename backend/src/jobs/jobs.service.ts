@@ -46,7 +46,33 @@ export class JobsService {
       .maybeSingle();
 
     if (contractError) throw new BadRequestException(contractError.message);
-    if (existingContract) return existingContract;
+    
+    if (existingContract) {
+      if (existingContract.estado_contratacion === 'Cancelada') {
+        const { data: resetContract, error: updateError } = await this.client
+          .from('contrataciones')
+          .update({
+            estado_contratacion: 'Pendiente',
+            monto_acordado: null,
+            precio_final_acordado: null,
+            fecha_horario_acordado: null,
+            direccion_o_zona: null,
+            condiciones_especiales: null,
+            detalle_acuerdo: null,
+            fecha_confirmacion: null,
+            fecha_rechazo: null,
+            materiales_incluidos: null,
+            descripcion_materiales: null,
+          })
+          .eq('id_contratacion', existingContract.id_contratacion)
+          .select()
+          .single();
+
+        if (updateError) throw new BadRequestException(updateError.message);
+        return resetContract;
+      }
+      return existingContract;
+    }
 
     const { data: createdContract, error: createError } = await this.client
       .from('contrataciones')
@@ -101,7 +127,24 @@ export class JobsService {
     })();
 
     const contract = await this.ensureContract(conversation);
-    return { conversation, contract };
+
+    // Fetch counterpart names so the frontend can display them immediately
+    const [{ data: workerProfile }] = await Promise.all([
+      this.client
+        .from('trabajadores')
+        .select('nombre_y_apellido_trabajador, url_foto_perfil')
+        .eq('id_trabajador', workerId)
+        .maybeSingle(),
+    ]);
+
+    const enrichedConversation = {
+      ...conversation,
+      counterpart_name: workerProfile?.nombre_y_apellido_trabajador ?? null,
+      counterpart_avatar: workerProfile?.url_foto_perfil ?? null,
+      contract,
+    };
+
+    return { conversation: enrichedConversation, contract };
   }
 
   async getConversations(role: UserRole, userId: number) {
@@ -314,6 +357,19 @@ export class JobsService {
       fecha_confirmacion: fechaConfirmacion || existingContract.fecha_confirmacion || null,
       fecha_rechazo: fechaRechazo || existingContract.fecha_rechazo || null,
     };
+
+    if (data.action === ContractAction.INTENT) {
+      updatePayload.monto_acordado = null;
+      updatePayload.precio_final_acordado = null;
+      updatePayload.fecha_horario_acordado = null;
+      updatePayload.direccion_o_zona = null;
+      updatePayload.condiciones_especiales = null;
+      updatePayload.detalle_acuerdo = null;
+      updatePayload.fecha_confirmacion = null;
+      updatePayload.fecha_rechazo = null;
+      updatePayload.materiales_incluidos = null;
+      updatePayload.descripcion_materiales = null;
+    }
 
     const { data: updatedContract, error } = await this.client
       .from('contrataciones')
