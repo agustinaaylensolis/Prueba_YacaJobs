@@ -5,6 +5,8 @@ import { SendMessageDto } from './dto/send-message.dto.js';
 import { ContractAction, UpdateContractStatusDto } from './dto/update-contract-status.dto.js';
 import { UpdateContractAgreementDto } from './dto/update-contract-agreement.dto.js';
 import { JobPostingNotifier } from './observers/job-posting.notifier.js';
+import { MessageNotifier } from './observers/message.notifier.js';
+import { ContractNotifier } from './observers/contract.notifier.js';
 
 type UserRole = 'CLIENT' | 'WORKER';
 
@@ -12,7 +14,9 @@ type UserRole = 'CLIENT' | 'WORKER';
 export class JobsService {
   constructor(
     @Inject(SupabaseService) private readonly supabaseService: SupabaseService,
-    @Inject(JobPostingNotifier) private readonly jobPostingNotifier: JobPostingNotifier
+    @Inject(JobPostingNotifier) private readonly jobPostingNotifier: JobPostingNotifier,
+    @Inject(MessageNotifier) private readonly messageNotifier: MessageNotifier,
+    @Inject(ContractNotifier) private readonly contractNotifier: ContractNotifier,
   ) {}
 
   private get client() {
@@ -263,12 +267,13 @@ export class JobsService {
     const { data: message, error } = await this.client
       .from('mensajes')
       .insert(payload)
-      .select()
+      .select('*')
       .single();
 
     if (error) throw new BadRequestException(error.message);
 
-    const { error: conversationUpdateError } = await this.client
+    // Actualizar la última actividad de la conversación
+    await this.client
       .from('conversaciones')
       .update({
         ultimo_mensaje_preview: content.slice(0, 160),
@@ -276,7 +281,20 @@ export class JobsService {
       })
       .eq('id_conversacion', conversationId);
 
-    if (conversationUpdateError) throw new BadRequestException(conversationUpdateError.message);
+    // Obtener contraparte para notificar
+    const { data: conv } = await this.client
+      .from('conversaciones')
+      .select('id_cliente, id_trabajador')
+      .eq('id_conversacion', conversationId)
+      .single();
+
+    if (conv) {
+      const destinatario = senderRole === 'CLIENT'
+        ? { id_usuario: conv.id_trabajador, tipo_usuario: 'WORKER' }
+        : { id_usuario: conv.id_cliente, tipo_usuario: 'CLIENT' };
+      
+      await this.messageNotifier.notify({ message, destinatarios: [destinatario] });
+    }
 
     return message;
   }
@@ -396,6 +414,25 @@ export class JobsService {
 
     if (conversationError) throw new BadRequestException(conversationError.message);
 
+    // Notificar cambio de estado del contrato
+    const { data: conv } = await this.client
+      .from('conversaciones')
+      .select('id_cliente, id_trabajador')
+      .eq('id_conversacion', conversationId)
+      .single();
+
+    if (conv) {
+      const destinatario = actorRole === 'CLIENT'
+        ? { id_usuario: conv.id_trabajador, tipo_usuario: 'WORKER' }
+        : { id_usuario: conv.id_cliente, tipo_usuario: 'CLIENT' };
+      
+      await this.contractNotifier.notify({ 
+        contract: updatedContract, 
+        action: data.action, 
+        destinatarios: [destinatario] 
+      });
+    }
+
     return {
       ...updatedContract,
       monto: updatedContract.monto_acordado,
@@ -468,6 +505,25 @@ export class JobsService {
       .eq('id_conversacion', conversationId);
 
     if (conversationError) throw new BadRequestException(conversationError.message);
+
+    // Notificar propuesta de contrato
+    const { data: conv } = await this.client
+      .from('conversaciones')
+      .select('id_cliente, id_trabajador')
+      .eq('id_conversacion', conversationId)
+      .single();
+
+    if (conv) {
+      const destinatario = actorRole === 'CLIENT'
+        ? { id_usuario: conv.id_trabajador, tipo_usuario: 'WORKER' }
+        : { id_usuario: conv.id_cliente, tipo_usuario: 'CLIENT' };
+      
+      await this.contractNotifier.notify({ 
+        contract: updatedContract, 
+        action: 'AGREEMENT_SENT', 
+        destinatarios: [destinatario] 
+      });
+    }
 
     return {
       ...updatedContract,
@@ -686,8 +742,16 @@ export class JobsService {
 
     if (error) throw new BadRequestException(error.message);
     
+    // Solución N+1: Obtener trabajadores aquí y pasarlos al notificador
+    const { data: workers } = await this.client
+      .from('oficio_del_trabajador')
+      .select('id_trabajador')
+      .eq('id_oficio', post.id_oficio);
+
+    const destinatarios = workers ? workers.map(w => w.id_trabajador) : [];
+
     // Notificar a los trabajadores interesados
-    await this.jobPostingNotifier.notify(post);
+    await this.jobPostingNotifier.notify({ post, destinatarios });
     
     return post;
   }

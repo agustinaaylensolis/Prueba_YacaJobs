@@ -1,14 +1,112 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3 } from 'lucide-react';
+import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3, Circle } from 'lucide-react';
 import RatingStars from './components/RatingStars';
-import NotificationBell from './components/NotificationBell';
 import { getWorkerRatings, createWorkerRating } from './lib/ratings';
 import { Rating } from './types';
 import { COLORS } from './constants';
 import { UserRole } from './types';
 import { supabase } from './lib/supabase';
 import { SearchStrategyFactory } from './strategies/SearchStrategyFactory';
+
+// --- Interfaces ---
+export interface Notification {
+  id_notificacion: number;
+  id_usuario: number;
+  tipo_usuario: string;
+  titulo: string;
+  mensaje: string;
+  id_publi?: number;
+  leido: boolean;
+  seccion_destino?: string;
+  fecha_creacion: string;
+}
+
+// --- Hooks ---
+export const useNotifications = (userId: number | undefined, role: UserRole) => {
+  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const parsedUserId = userId ? Number(userId) : undefined;
+    if (!parsedUserId || !Number.isFinite(parsedUserId)) return;
+
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase
+        .from('notificaciones')
+        .select('*')
+        .eq('id_usuario', parsedUserId)
+        .eq('tipo_usuario', role)
+        .order('fecha_creacion', { ascending: false })
+        .limit(20);
+
+      if (!error && data) {
+        setNotifications(data);
+        setUnreadCount(data.filter(n => !n.leido).length);
+      }
+    };
+
+    // Initial fetch
+    fetchNotifications();
+
+    // Setup polling fallback (every 10 seconds)
+    const intervalId = setInterval(fetchNotifications, 10000);
+
+    const roleStr = role === UserRole.CLIENT ? 'CLIENT' : 'WORKER';
+
+    // Setup Realtime subscription for all changes (*)
+    const channel = supabase
+      .channel(`notificaciones_changes_${roleStr}_${parsedUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notificaciones',
+          filter: `id_usuario=eq.${parsedUserId}`,
+        },
+        () => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(intervalId);
+      supabase.removeChannel(channel);
+    };
+  }, [userId, role]);
+
+  const markAsRead = async (id: number) => {
+    const { error } = await supabase.from('notificaciones').update({ leido: true }).eq('id_notificacion', id);
+    if (!error) {
+      setNotifications(prev => prev.map(n => n.id_notificacion === id ? { ...n, leido: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unreadIds = notifications.filter(n => !n.leido).map(n => n.id_notificacion);
+    if (unreadIds.length === 0) return;
+    const { error } = await supabase.from('notificaciones').update({ leido: true }).in('id_notificacion', unreadIds);
+    if (!error) {
+      setNotifications(prev => prev.map(n => ({ ...n, leido: true })));
+      setUnreadCount(0);
+    }
+  };
+
+  const markSectionAsRead = async (section: string) => {
+    const unreadIds = notifications.filter(n => !n.leido && n.seccion_destino === section).map(n => n.id_notificacion);
+    if (unreadIds.length === 0) return;
+    const { error } = await supabase.from('notificaciones').update({ leido: true }).in('id_notificacion', unreadIds);
+    if (!error) {
+      setNotifications(prev => prev.map(n => unreadIds.includes(n.id_notificacion) ? { ...n, leido: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - unreadIds.length));
+    }
+  };
+
+  return { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead };
+};
 
 // --- Sub-components ---
 
@@ -1621,6 +1719,14 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
 
 const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
   const [activeTab, setActiveTab] = useState<'search' | 'posts' | 'profile' | 'messages'>('search');
+  const { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead } = useNotifications(user?.id_cliente, UserRole.CLIENT);
+  const unreadPosts = notifications.filter(n => !n.leido && n.seccion_destino === 'PEDIDOS').length;
+  const unreadMessages = notifications.filter(n => !n.leido && n.seccion_destino === 'MENSAJERIA').length;
+
+  React.useEffect(() => {
+    if (activeTab === 'posts') markSectionAsRead('PEDIDOS');
+    else if (activeTab === 'messages') markSectionAsRead('MENSAJERIA');
+  }, [activeTab, notifications]);
   const [trades, setTrades] = useState<any[]>([]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
@@ -1845,7 +1951,12 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const loadConversations = async () => {
     const res = await fetch(`/api/jobs/conversations?role=CLIENT&userId=${user.id_cliente}`);
-    if (res.ok) setConversations(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setConversations(data);
+      const totalUnread = data.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
+      setUnreadCountClient(totalUnread);
+    }
   };
 
   React.useEffect(() => {
@@ -1855,20 +1966,14 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   }, [activeTab]);
 
   React.useEffect(() => {
-    // inicializar conteo y actualizar cada 30s
-    loadConversations().then(() => {
-      setUnreadCountClient(conversations.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0));
-    });
-    const iv = setInterval(async () => {
-      await loadConversations();
-      setUnreadCountClient((prev) => {
-        // recompute from latest conversations state
-        return conversations.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
-      });
-    }, 30000);
+    loadConversations();
+    const iv = setInterval(loadConversations, 30000);
     return () => clearInterval(iv);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    loadConversations();
+  }, [notifications]);
 
   const openConversation = async (workerId: number) => {
     setActiveTab('messages');
@@ -1919,18 +2024,16 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <Logo variant={2} />
-          <NotificationBell 
-            userId={user.id_cliente} 
-            role={UserRole.CLIENT} 
-            onNotificationClick={() => setActiveTab('posts')} 
-          />
         </div>
         <nav className="flex-1 space-y-1">
           <button onClick={() => setActiveTab('search')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'search' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Search className="w-4 h-4"/> Buscar</button>
-          <button onClick={() => setActiveTab('posts')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'posts' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><FileText className="w-4 h-4"/> Mis Pedidos</button>
+          <button onClick={() => setActiveTab('posts')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'posts' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+            <div className="flex items-center gap-3"><FileText className="w-4 h-4"/> Mis Pedidos</div>
+            {unreadPosts > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadPosts}</span>}
+          </button>
           <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
             <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
-            {unreadCountClient > 0 && <span className="bg-primary text-white text-[12px] px-2 py-0.5 rounded-full">{unreadCountClient}</span>}
+            {unreadCountClient > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountClient}</span>}
           </button>
           <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
         </nav>
@@ -2409,6 +2512,14 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
 const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
   const [activeTab, setActiveTab] = useState<'forum' | 'profile' | 'messages'>('forum');
+  const { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead } = useNotifications(user?.id_trabajador, UserRole.WORKER);
+  const unreadForum = notifications.filter(n => !n.leido && n.seccion_destino === 'FORO').length;
+  const unreadMessages = notifications.filter(n => !n.leido && n.seccion_destino === 'MENSAJERIA').length;
+
+  React.useEffect(() => {
+    if (activeTab === 'forum') markSectionAsRead('FORO');
+    else if (activeTab === 'messages') markSectionAsRead('MENSAJERIA');
+  }, [activeTab, notifications]);
   const [forumPosts, setForumPosts] = useState<any[]>([]);
   const [isPostulating, setIsPostulating] = useState<any>(null);
   const [budget, setBudget] = useState({ price: '', materials: '', message: '' });
@@ -2445,18 +2556,24 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const loadWorkerConversations = async () => {
     const res = await fetch(`/api/jobs/conversations?role=WORKER&userId=${user.id_trabajador}`);
-    if (res.ok) setWorkerConversations(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setWorkerConversations(data);
+      const totalUnread = data.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
+      setUnreadCountWorker(totalUnread);
+    }
   };
 
   React.useEffect(() => {
-    loadWorkerConversations().then(() => setUnreadCountWorker(workerConversations.reduce((s: number, c: any) => s + (c.unread_count || 0), 0)));
-    const iv = setInterval(async () => {
-      await loadWorkerConversations();
-      setUnreadCountWorker(workerConversations.reduce((s: number, c: any) => s + (c.unread_count || 0), 0));
-    }, 30000);
+    loadWorkerConversations();
+    const iv = setInterval(loadWorkerConversations, 30000);
     return () => clearInterval(iv);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    loadWorkerConversations();
+    loadPosts();
+  }, [notifications]);
 
   const openWorkerConversation = (conversation: any) => {
     setActiveTab('messages');
@@ -2544,17 +2661,15 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       <aside className="w-64 bg-white border-r p-6 flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <Logo variant={2} />
-          <NotificationBell 
-            userId={user.id_trabajador} 
-            role={UserRole.WORKER} 
-            onNotificationClick={(id) => { if (id) setActiveTab('forum'); }} 
-          />
         </div>
         <nav className="flex-1 space-y-1">
-          <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><MapPin className="w-4 h-4"/> Foro de Trabajos</button>
+          <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+            <div className="flex items-center gap-3"><MapPin className="w-4 h-4"/> Foro de Trabajos</div>
+            {unreadForum > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadForum}</span>}
+          </button>
           <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
             <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
-            {unreadCountWorker > 0 && <span className="bg-primary text-white text-[12px] px-2 py-0.5 rounded-full">{unreadCountWorker}</span>}
+            {unreadCountWorker > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountWorker}</span>}
           </button>
           <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
         </nav>

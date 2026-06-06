@@ -3,7 +3,7 @@ import { Subject } from './subject.interface.js';
 import { Observer } from './observer.interface.js';
 
 @Injectable()
-export class JobPostingNotifier implements Subject {
+export class MessageNotifier implements Subject {
   private observers: Observer[] = [];
 
   attach(observer: Observer): void {
@@ -20,15 +20,14 @@ export class JobPostingNotifier implements Subject {
     }
   }
 
-  async notify(data: { post: any; destinatarios: any[] }): Promise<void> {
+  async notify(data: { message: any; destinatarios: any[] }): Promise<void> {
     for (const observer of this.observers) {
-      // Fire updates asynchronously so we don't block the main thread
       try {
         observer.update(this, data).catch((err: any) => {
-          console.error('[JobPostingNotifier] Error asíncrono en observer:', err);
+          console.error('[MessageNotifier] Error asíncrono en observer:', err);
         });
       } catch (err: any) {
-        console.error('[JobPostingNotifier] Error síncrono al iniciar observer:', err);
+        console.error('[MessageNotifier] Error síncrono al iniciar observer:', err);
       }
     }
   }
