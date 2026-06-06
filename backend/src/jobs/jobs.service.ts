@@ -293,6 +293,19 @@ export class JobsService {
       nextStatus = 'Pendiente';
     } else if (data.action === ContractAction.CANCEL_PROPOSAL) {
       nextStatus = 'IntencionCliente';
+    } else if (data.action === ContractAction.CANCEL_CONFIRMED) {
+      if (existingContract.estado_contratacion !== 'Confirmada') {
+        throw new BadRequestException('Solo se pueden cancelar contratos que estén confirmados');
+      }
+      const fechaAcordada = existingContract.fecha_horario_acordado;
+      if (fechaAcordada) {
+        const timeDiff = new Date(fechaAcordada).getTime() - Date.now();
+        if (timeDiff < 60 * 60 * 1000) {
+          throw new BadRequestException('No se puede cancelar el contrato con menos de 1 hora de anticipación a la fecha acordada');
+        }
+      }
+      nextStatus = 'Cancelada';
+      fechaRechazo = now;
     }
 
     const updatePayload: Record<string, any> = {

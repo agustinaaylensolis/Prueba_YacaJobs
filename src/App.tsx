@@ -484,6 +484,50 @@ const ConversationModal = ({
     }
   };
 
+  const handleCancelConfirmedContract = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas cancelar este contrato ya confirmado?')) return;
+    setNotice({ text: '', type: null });
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          action: 'CANCEL_CONFIRMED'
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: '[CONTRATO CANCELADO] El contrato confirmado ha sido cancelado.'
+          })
+        });
+
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setNotice({ text: err.message || 'Error al cancelar contrato.', type: 'error' });
+      }
+    } catch {
+      setNotice({ text: 'Error de red.', type: 'error' });
+    }
+  };
+
+  const isContractConfirmed = currentContract?.estado_contratacion === 'Confirmada';
+  const eventDateString = currentContract?.fecha_hora || currentContract?.fecha_horario_acordado;
+  const timeToEvent = eventDateString ? new Date(eventDateString as string).getTime() - Date.now() : null;
+  const canCancel = isContractConfirmed && timeToEvent !== null && timeToEvent >= 60 * 60 * 1000;
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0, y: 14, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-4xl">
@@ -650,18 +694,35 @@ const ConversationModal = ({
             )}
 
             {currentContract?.estado_contratacion === 'Confirmada' && (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-center gap-3 animate-fade-in">
-                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
-                  <CheckCircle2 className="w-5 h-5" />
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-sm text-emerald-800">✓ Contrato Confirmado</h5>
+                    <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
+                  </div>
                 </div>
-                <div>
-                  <h5 className="font-bold text-sm text-emerald-800">✓ Contrato Confirmado</h5>
-                  <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
+                <div className="shrink-0 flex flex-col items-end">
+                  <Button 
+                    variant="outline" 
+                    className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" 
+                    onClick={handleCancelConfirmedContract}
+                    disabled={!canCancel}
+                  >
+                    Cancelar contrato
+                  </Button>
+                  {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
+                    <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
+                      No es posible cancelar con menos de 1 hora de anticipación.
+                    </span>
+                  )}
                 </div>
               </div>
             )}
 
-            {currentContract?.estado_contratacion === 'Rechazada' && (
+            {(currentContract?.estado_contratacion === 'Rechazada' || currentContract?.estado_contratacion === 'Cancelada') && (
               <div className="p-4 rounded-2xl bg-red-50 border border-red-200 shadow-sm flex items-center gap-3 animate-fade-in">
                 <div className="p-2 bg-red-100 text-red-700 rounded-full">
                   <X className="w-5 h-5" />
@@ -717,9 +778,10 @@ const ConversationModal = ({
                 placeholder="Escribe un mensaje interno..."
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
+                disabled={currentContract?.estado_contratacion === 'Rechazada' || currentContract?.estado_contratacion === 'Cancelada'}
               />
               <div className="flex justify-end gap-2">
-                <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim()}>
+                <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim() || currentContract?.estado_contratacion === 'Rechazada' || currentContract?.estado_contratacion === 'Cancelada'}>
                   {isSending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Send className="w-4 h-4 mr-2" /> Enviar mensaje</>}
                 </Button>
               </div>

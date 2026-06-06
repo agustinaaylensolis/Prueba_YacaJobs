@@ -6,6 +6,7 @@ export enum ContractAction {
   INTENT = 'INTENT',
   CANCEL_INTENT = 'CANCEL_INTENT',
   CANCEL_PROPOSAL = 'CANCEL_PROPOSAL',
+  CANCEL_CONFIRMED = 'CANCEL_CONFIRMED',
 }
 
 export class UpdateContractStatusDto {
