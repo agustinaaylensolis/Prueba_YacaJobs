@@ -31,4 +31,24 @@ export class UpdateContractAgreementDto {
   @IsOptional()
   @IsString()
   detalleAcuerdo?: string;
+
+  @IsOptional()
+  @IsString()
+  fecha_hora?: string;
+
+  @IsOptional()
+  @IsString()
+  direccion?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion_materiales?: string;
+
+  @IsOptional()
+  @Min(0)
+  monto?: number;
 }

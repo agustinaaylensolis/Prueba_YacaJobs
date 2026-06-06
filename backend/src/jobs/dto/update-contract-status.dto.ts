@@ -3,6 +3,10 @@ import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 export enum ContractAction {
   CONFIRM = 'CONFIRM',
   REJECT = 'REJECT',
+  INTENT = 'INTENT',
+  CANCEL_INTENT = 'CANCEL_INTENT',
+  CANCEL_PROPOSAL = 'CANCEL_PROPOSAL',
+  CANCEL_CONFIRMED = 'CANCEL_CONFIRMED',
 }
 
 export class UpdateContractStatusDto {

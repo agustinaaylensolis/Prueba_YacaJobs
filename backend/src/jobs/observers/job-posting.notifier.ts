@@ -23,9 +23,13 @@ export class JobPostingNotifier implements Subject {
   async notify(post: any): Promise<void> {
     for (const observer of this.observers) {
       // Fire updates asynchronously so we don't block the main thread
-      observer.update(this, post)?.catch((err: any) => {
-        console.error('[JobPostingNotifier] Error en observer:', err);
-      });
+      try {
+        observer.update(this, post).catch((err: any) => {
+          console.error('[JobPostingNotifier] Error asíncrono en observer:', err);
+        });
+      } catch (err: any) {
+        console.error('[JobPostingNotifier] Error síncrono al iniciar observer:', err);
+      }
     }
   }
 }
