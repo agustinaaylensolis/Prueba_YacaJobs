@@ -642,7 +642,14 @@ export class JobsService {
     
     // Enrich with actual trade names if needed, or let the component do it.
     // For MVP, we'll return the workers and their scores.
-    return data;
+    // Ordenar descendente por puntuacion (mayor puntuacion primero, null/0 al final)
+    const sortedData = (data || []).sort((a, b) => {
+      const scoreA = a.puntuacion === null || a.puntuacion === undefined ? 0 : Number(a.puntuacion);
+      const scoreB = b.puntuacion === null || b.puntuacion === undefined ? 0 : Number(b.puntuacion);
+      return scoreB - scoreA;
+    });
+
+    return sortedData;
   }
 
   async searchWorkersByText(q: string) {
@@ -726,13 +733,22 @@ export class JobsService {
     allWorkers = allWorkers.slice(0, 50);
 
     // Normalizar estructura para que sea consistente con getWorkerProfile
-    return allWorkers.map((worker: any) => ({
+    const normalizedWorkers = allWorkers.map((worker: any) => ({
       ...worker,
       oficios: (worker.oficio_del_trabajador || [])
         .map((item: any) => item?.oficios)
         .filter(Boolean),
       oficio_del_trabajador: undefined, // limpiar raw join
     }));
+
+    // Ordenar descendente por puntuacion (mayor puntuacion primero, null/0 al final)
+    normalizedWorkers.sort((a, b) => {
+      const scoreA = a.puntuacion === null || a.puntuacion === undefined ? 0 : Number(a.puntuacion);
+      const scoreB = b.puntuacion === null || b.puntuacion === undefined ? 0 : Number(b.puntuacion);
+      return scoreB - scoreA;
+    });
+
+    return normalizedWorkers;
   }
 
   async getWorkerProfile(workerId: number) {

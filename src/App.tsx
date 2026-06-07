@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3, Circle } from 'lucide-react';
+import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3, Circle, Lock } from 'lucide-react';
 import RatingStars from './components/RatingStars';
 import { getWorkerRatings, createWorkerRating } from './lib/ratings';
 import { Rating } from './types';
@@ -112,14 +112,24 @@ export const useNotifications = (userId: number | undefined, role: UserRole) => 
 // --- Sub-components ---
 
 const Logo = ({ variant = 1 }: { variant?: 1 | 2 }) => (
-  <div className="flex items-center gap-2">
-    <div className={`w-10 h-10 bg-primary rounded-2xl flex items-center justify-center p-1`}>
-      <img src="/images/logo1.png" alt="Logo" className="w-full h-full object-contain" onError={(e) => {
+  <div className="flex items-center gap-2 -ml-3">
+    <img
+      src="/images/logo1.png"
+      alt="Logo"
+      className="w-20 h-auto filter drop-shadow-[0_4px_6px_rgba(46,125,50,0.25)]"
+      onError={(e) => {
         // accion alternativa si la imagen no carga
         e.currentTarget.src = "/images/logo1.png";
-      }} />
-    </div>
-    {variant === 2 && <span className="text-2xl font-bold tracking-tight text-primary">YacaJobs</span>}
+      }}
+    />
+    {variant === 2 && (
+      <span
+        className="text-3xl font-black tracking-tight text-primary"
+        style={{ textShadow: '0 2px 5px rgba(46,125,50,0.30)' }}
+      >
+        YacaJobs
+      </span>
+    )}
   </div>
 );
 
@@ -129,9 +139,9 @@ const Card = ({ children, className = "" }: { children: React.ReactNode; classNa
   </div>
 );
 
-const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }: { 
-  children: React.ReactNode; 
-  onClick?: () => void; 
+const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }: {
+  children: React.ReactNode;
+  onClick?: () => void;
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
   className?: string;
   disabled?: boolean;
@@ -144,8 +154,8 @@ const Button = ({ children, onClick, variant = 'primary', className = "", disabl
     ghost: `text-muted hover:bg-gray-100`,
   };
   return (
-    <button 
-      onClick={onClick} 
+    <button
+      onClick={onClick}
       disabled={disabled}
       className={`soft-button cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
     >
@@ -455,7 +465,7 @@ const ConversationModal = ({
       if (res.ok) {
         const updated = await res.json();
         setCurrentContract(updated);
-        
+
         // Enviar mensaje automático indicando la intención de contratación
         await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
           method: 'POST',
@@ -566,8 +576,8 @@ const ConversationModal = ({
         const updated = await res.json();
         setCurrentContract(updated);
 
-        const materialsText = proposalData.materialesIncluidos 
-          ? `Incluye materiales: ${proposalData.descripcionMateriales}` 
+        const materialsText = proposalData.materialesIncluidos
+          ? `Incluye materiales: ${proposalData.descripcionMateriales}`
           : 'No incluye materiales.';
 
         // Enviar mensaje estructurado al chat
@@ -757,7 +767,7 @@ const ConversationModal = ({
 
   const isContractConfirmed = currentContract?.estado_contratacion === 'Confirmada';
   const eventDateString = currentContract?.fecha_hora || currentContract?.fecha_horario_acordado;
-  
+
   let timeToEvent: number | null = null;
   let isCancelDisabled = false;
 
@@ -765,11 +775,11 @@ const ConversationModal = ({
     let str = eventDateString as string;
     // Forzamos el uso de la 'T' para formato ISO
     str = str.replace(' ', 'T');
-    
+
     // Eliminamos cualquier offset de zona horaria (Z o +00:00) tomando solo los primeros 19 caracteres (YYYY-MM-DDTHH:mm:ss)
     // Esto asegura que el navegador interprete la fecha en la misma zona horaria local en la que el usuario la ingresó
     str = str.substring(0, 19);
-    
+
     const contractDate = new Date(str);
     const timeRemaining = contractDate.getTime() - Date.now();
     isCancelDisabled = timeRemaining <= 3600000; // 1 hora en ms
@@ -936,7 +946,7 @@ const ConversationModal = ({
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Propuesta de Trabajo</span>
                   <div className="text-lg font-black text-amber-900">${currentContract.monto}</div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div className="space-y-1">
                     <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Fecha y Hora</span>
@@ -997,17 +1007,17 @@ const ConversationModal = ({
                     </div>
                   </div>
                   <div className="shrink-0 flex items-center gap-3">
-                    <Button 
-                      variant="primary" 
-                      className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs py-2 px-4 font-bold" 
+                    <Button
+                      variant="primary"
+                      className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs py-2 px-4 font-bold"
                       onClick={handleFinalizeContract}
                     >
                       Finalizar Trabajo
                     </Button>
                     <div className="flex flex-col items-end">
-                      <Button 
-                        variant="outline" 
-                        className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" 
+                      <Button
+                        variant="outline"
+                        className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold"
                         onClick={handleCancelConfirmedContract}
                         disabled={!canCancel}
                       >
@@ -1042,7 +1052,7 @@ const ConversationModal = ({
                             Cancelar
                           </button>
                         </div>
-                        
+
                         {newRatingError && (
                           <div className="bg-red-100 text-red-700 p-3 rounded-xl text-xs font-bold">
                             {newRatingError}
@@ -1310,52 +1320,66 @@ const ConversationModal = ({
 
 const LandingPage = ({ onStart }: { onStart: (role: UserRole | null, isLogin: boolean) => void }) => (
   <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-base/10">
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="max-w-4xl w-full text-center space-y-8"
     >
-      <div className="flex justify-center mb-8">
-        <div className="p-8 bg-white rounded-[4rem] shadow-xl">
-           <img src="/images/logo1.png" alt="Hero Logo" className="w-64 h-auto" onError={(e) => {
-             e.currentTarget.src = "/images/logo2.png";
-           }} />
-        </div>
+      <div className="flex flex-row items-center justify-center gap-2 mb-0">
+        <img src="/images/logo1.png" alt="Hero Logo" className="w-52 h-auto filter drop-shadow-[0_10px_15px_rgba(46,125,50,0.30)]" onError={(e) => {
+          e.currentTarget.src = "/images/logo2.png";
+        }} />
+        <span className="text-7xl font-black tracking-tight text-primary" style={{ textShadow: '0 4px 10px rgba(46,125,50,0.30)' }}>YacaJobs</span>
       </div>
-      
-      <h1 className="text-6xl font-extrabold text-primary tracking-tight leading-tight">
-        Conectamos trabajadores <span className="text-accent underline decoration-4 underline-offset-8">de oficio </span>con tus necesidades.
+
+      <h1 className="text-6xl font-extrabold text-primary tracking-tight leading-tight" style={{ textShadow: '0 4px 10px rgba(46,125,50,0.30)' }}>
+        Conectamos trabajadores <span className="text-accent underline decoration-4 underline-offset-8">de oficio </span>con tus necesidades
       </h1>
-      <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-        Busca trabajadores que te brinden la solucion a tu problema, o encuentra oportunidades laborales que se ajusten a tu experiencia y reputacion. Sin vueltas, con transparencia y resultados efectivos.
-      </p>
 
       <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
         <Button onClick={() => onStart(null, false)} className="text-lg px-12 py-5 shadow-lg shadow-primary/20">
           Comenzar ahora
         </Button>
-        <Button 
-          variant="outline" 
-          className="text-lg px-12 py-5"
+        <Button
+          variant="outline"
+          className="text-lg px-12 py-5 shadow-lg shadow-primary/20 bg-white"
           onClick={() => onStart(null, true)}
         >
           Ya tengo cuenta (Ingresar)
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20">
+      <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed mt-10 mb-6">
+        Busca trabajadores que te brinden la solucion a tu problema, o encuentra oportunidades laborales que se ajusten a tu experiencia y reputacion. Sin vueltas, con transparencia y resultados efectivos.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16">
         {[
-          { icon: <ShieldCheck className="w-8 h-8"/>, title: "Validación DNI", desc: "Seguridad total con validación de documentos obligatoria." },
-          { icon: <Star className="w-8 h-8"/>, title: "Sistema de Scoring", desc: "Contrata basado en reputación real y verificada." },
-          { icon: <CheckCircle2 className="w-8 h-8"/>, title: "Certificados", desc: "Trabajadores con antecedentes de buena conducta." }
+          { icon: <ShieldCheck className="w-8 h-8" />, title: "Validación DNI", desc: "Seguridad total con validación de documentos obligatoria." },
+          { icon: <Star className="w-8 h-8" />, title: "Sistema de Scoring", desc: "Contrata basado en reputación real y verificada." },
+          { icon: <CheckCircle2 className="w-8 h-8" />, title: "Certificados", desc: "Trabajadores con antecedentes de buena conducta." }
         ].map((feat, i) => (
-          <Card key={i} className="flex flex-col items-center text-center space-y-3 border-none bg-white/60 backdrop-blur-sm">
+          <Card key={i} className="flex flex-col items-center text-center space-y-3 border-none bg-white shadow-md">
             <div className="p-4 bg-primary/5 rounded-3xl text-primary">{feat.icon}</div>
             <h3 className="font-bold text-lg">{feat.title}</h3>
             <p className="text-sm text-gray-500">{feat.desc}</p>
           </Card>
         ))}
       </div>
+
+      {/* Footer */}
+      <footer className="pt-16 pb-4 border-t border-slate-200/50 text-xs text-slate-400 font-medium space-y-3 mt-12">
+        <p><span className="hover:text-primary transition-colors cursor-pointer">Términos y condiciones</span> • YacaJobs derechos reservados 2026 • Consultas: <a href="mailto:yacajobs@gmail.com" className="hover:text-primary transition-colors">yacajobs@gmail.com</a> </p>
+        <div className="flex justify-center">
+          <button
+            onClick={() => onStart(null, true)}
+            className="text-slate-400/30 hover:text-slate-400/70 transition-all duration-300 p-1 cursor-pointer"
+            title="Acceso Administración"
+          >
+            <Lock className="w-4 h-4" />
+          </button>
+        </div>
+      </footer>
     </motion.div>
   </div>
 );
@@ -1364,7 +1388,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
   const [role, setRole] = useState<UserRole | null>(null);
   const [step, setStep] = useState(1);
   const [isLogin, setIsLogin] = useState(initialIsLogin);
-  const [message, setMessage] = useState<{text: string, type: 'success' | 'error' | null}>({text: '', type: null});
+  const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [trades, setTrades] = useState<any[]>([]);
@@ -1570,7 +1594,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
   };
 
   const handleAuthOperation = async () => {
-    setMessage({text: '', type: null});
+    setMessage({ text: '', type: null });
     setFieldErrors({});
     setIsLoading(true);
 
@@ -1592,7 +1616,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         }
         const result = await response.json();
         setFieldErrors({});
-        setMessage({text: '¡Ingreso exitoso!', type: 'success'});
+        setMessage({ text: '¡Ingreso exitoso!', type: 'success' });
         setTimeout(() => onAuth(normalizeAuthUser(result)), 1000);
       } else {
         // Registration
@@ -1632,7 +1656,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         }
         const result = await response.json();
         setFieldErrors({});
-        setMessage({text: '¡Registro completado!', type: 'success'});
+        setMessage({ text: '¡Registro completado!', type: 'success' });
         setTimeout(() => onAuth(normalizeAuthUser(result)), 1000);
       }
     } catch (error: any) {
@@ -1641,7 +1665,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         setFieldErrors((prev) => ({ ...prev, ...backendFieldErrors }));
         jumpToFirstInvalidStep(backendFieldErrors);
       }
-      setMessage({text: backendMessage || 'No se pudo completar la operacion.', type: 'error'});
+      setMessage({ text: backendMessage || 'No se pudo completar la operacion.', type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -1669,13 +1693,13 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
       <Card className="max-w-lg w-full p-10 space-y-8 bg-white relative overflow-hidden">
         {!isLogin && role && (
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-100">
-             <motion.div className="h-full bg-primary" initial={{ width: 0 }} animate={{ width: `${(step / 3) * 100}%` }} />
+            <motion.div className="h-full bg-primary" initial={{ width: 0 }} animate={{ width: `${(step / 3) * 100}%` }} />
           </div>
         )}
 
         <div className="absolute top-6 left-6">
           <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-full transition-all text-gray-400 hover:text-primary flex items-center gap-1 text-xs font-bold">
-            <ChevronLeft className="w-4 h-4"/>
+            <ChevronLeft className="w-4 h-4" />
             {role ? 'Atrás' : 'Inicio'}
           </button>
         </div>
@@ -1692,81 +1716,81 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
             <div className="grid grid-cols-1 gap-4">
               <button onClick={() => { setRole(UserRole.CLIENT); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
                 <div><h3 className="font-bold text-xl text-primary">Soy Cliente</h3><p className="text-sm text-muted">A contratar servicios.</p></div>
-                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all"/>
+                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all" />
               </button>
               <button onClick={() => { setRole(UserRole.WORKER); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
                 <div><h3 className="font-bold text-xl text-primary">Soy Trabajador</h3><p className="text-sm text-muted">A ofrecer mis servicios.</p></div>
-                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all"/>
+                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all" />
               </button>
             </div>
           </div>
         ) : (
           <div className="space-y-6 pt-4">
             <h2 className="text-2xl font-bold text-primary">{isLogin ? 'Ingresar' : `Registro ${role === UserRole.CLIENT ? 'Cliente' : 'Trabajador'}`}</h2>
-            
+
             <AnimatePresence mode="wait">
               {(step === 1 || isLogin) && (
                 <motion.div key="s1" className="space-y-4">
-                   <div>
-                     <input className={`input-soft ${fieldErrors.email ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Correo" type="email" value={formData.email} onChange={e => setFormField('email', e.target.value)} />
-                     {fieldErrors.email && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.email}</p>}
-                   </div>
-                   <div>
-                     <input className={`input-soft ${fieldErrors.password ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Contraseña" type="password" value={formData.password} onChange={e => setFormField('password', e.target.value)} />
-                     {fieldErrors.password && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.password}</p>}
-                   </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.email ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Correo" type="email" value={formData.email} onChange={e => setFormField('email', e.target.value)} />
+                    {fieldErrors.email && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.email}</p>}
+                  </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.password ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Contraseña" type="password" value={formData.password} onChange={e => setFormField('password', e.target.value)} />
+                    {fieldErrors.password && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.password}</p>}
+                  </div>
                 </motion.div>
               )}
               {step === 2 && !isLogin && (
                 <motion.div key="s2" className="space-y-4">
-                   <div>
-                     <input className={`input-soft ${fieldErrors.name ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Nombre completo" value={formData.name} onChange={e => setFormField('name', e.target.value)} />
-                     {fieldErrors.name && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.name}</p>}
-                   </div>
-                   <div>
-                     <input className={`input-soft ${fieldErrors.dni ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="DNI" value={formData.dni} onChange={e => setFormField('dni', e.target.value)} />
-                     {fieldErrors.dni && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dni}</p>}
-                   </div>
-                   <div className="flex gap-4">
-                     <div className="flex-1">
-                       <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
-                       {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
-                     </div>
-                     <div className="flex-1">
-                       <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
-                       {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
-                     </div>
-                   </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.name ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Nombre completo" value={formData.name} onChange={e => setFormField('name', e.target.value)} />
+                    {fieldErrors.name && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.name}</p>}
+                  </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.dni ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="DNI" value={formData.dni} onChange={e => setFormField('dni', e.target.value)} />
+                    {fieldErrors.dni && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dni}</p>}
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
+                      {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
+                    </div>
+                    <div className="flex-1">
+                      <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
+                      {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
+                    </div>
+                  </div>
                 </motion.div>
               )}
               {step === 3 && !isLogin && (
                 <motion.div key="s3" className="space-y-4">
-                   <div className="space-y-2">
-                     <p className="text-xs font-bold text-gray-400 uppercase">Documentación Obligatoria</p>
-                     <div className="grid grid-cols-2 gap-4">
-                       <button onClick={() => setFileField('dniFront', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniFront ? 'border-red-400 text-red-600' : (formData.files.dniFront ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Frente</button>
-                       <button onClick={() => setFileField('dniBack', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniBack ? 'border-red-400 text-red-600' : (formData.files.dniBack ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Dorso</button>
-                     </div>
-                     {fieldErrors.dniFront && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniFront}</p>}
-                     {fieldErrors.dniBack && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniBack}</p>}
-                     {role === UserRole.WORKER && (
-                       <>
-                         <button onClick={() => setFileField('policeCert', {} as File)} className={`w-full p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.policeCert ? 'border-red-400 text-red-600' : (formData.files.policeCert ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>Antecedentes Penales</button>
-                         {fieldErrors.policeCert && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.policeCert}</p>}
-                         <select className={`input-soft ${fieldErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`} value={formData.tradeId} onChange={e => setFormField('tradeId', e.target.value)}>
-                           <option value="">Selecciona tu Oficio</option>
-                           {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
-                         </select>
-                         {fieldErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.tradeId}</p>}
-                       </>
-                     )}
-                   </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-gray-400 uppercase">Documentación Obligatoria</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button onClick={() => setFileField('dniFront', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniFront ? 'border-red-400 text-red-600' : (formData.files.dniFront ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Frente</button>
+                      <button onClick={() => setFileField('dniBack', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniBack ? 'border-red-400 text-red-600' : (formData.files.dniBack ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Dorso</button>
+                    </div>
+                    {fieldErrors.dniFront && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniFront}</p>}
+                    {fieldErrors.dniBack && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniBack}</p>}
+                    {role === UserRole.WORKER && (
+                      <>
+                        <button onClick={() => setFileField('policeCert', {} as File)} className={`w-full p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.policeCert ? 'border-red-400 text-red-600' : (formData.files.policeCert ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>Antecedentes Penales</button>
+                        {fieldErrors.policeCert && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.policeCert}</p>}
+                        <select className={`input-soft ${fieldErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`} value={formData.tradeId} onChange={e => setFormField('tradeId', e.target.value)}>
+                          <option value="">Selecciona tu Oficio</option>
+                          {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
+                        </select>
+                        {fieldErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.tradeId}</p>}
+                      </>
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
             <Button onClick={handleSubmitOrNext} disabled={isLoading} className="w-full py-4 text-lg flex justify-center items-center gap-2">
-              {isLoading && <Loader2 className="w-5 h-5 animate-spin"/>}
+              {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
               {isLogin ? 'Ingresar' : (step === 3 ? 'Finalizar' : 'Siguiente')}
             </Button>
             <button onClick={() => { setIsLogin(!isLogin); setStep(1); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="w-full text-sm font-bold text-primary hover:underline">
@@ -1872,7 +1896,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     const strategy = SearchStrategyFactory.create(strategyType);
     try {
       const results = await strategy.execute(strategyParams);
-      setSearchResults(results);
+      // Ordenar descendente por puntuacion (mayor puntuacion primero, null/0 al final)
+      const sortedResults = (results || []).sort((a: any, b: any) => {
+        const scoreA = a.puntuacion === null || a.puntuacion === undefined ? 0 : Number(a.puntuacion);
+        const scoreB = b.puntuacion === null || b.puntuacion === undefined ? 0 : Number(b.puntuacion);
+        return scoreB - scoreA;
+      });
+      setSearchResults(sortedResults);
     } catch (error) {
       console.error('Error en búsqueda:', error);
       setSearchResults([]);
@@ -2108,26 +2138,26 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
           <Logo variant={2} />
         </div>
         <nav className="flex-1 space-y-1">
-          <button onClick={() => setActiveTab('search')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'search' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Search className="w-4 h-4"/> Buscar</button>
+          <button onClick={() => setActiveTab('search')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'search' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Search className="w-4 h-4" /> Buscar</button>
           <button onClick={() => setActiveTab('posts')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'posts' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-            <div className="flex items-center gap-3"><FileText className="w-4 h-4"/> Mis Pedidos</div>
+            <div className="flex items-center gap-3"><FileText className="w-4 h-4" /> Mis Pedidos</div>
             {unreadPosts > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadPosts}</span>}
           </button>
           <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-            <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
+            <div className="flex items-center gap-3"><Inbox className="w-4 h-4" /> Mensajes</div>
             {unreadCountClient > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountClient}</span>}
           </button>
-          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
-          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4"/> Historial</button>
+          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4" /> Historial</button>
+          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4" /> Mi Perfil</button>
         </nav>
         <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
-           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0] || 'U'}</div>
-             <div className="truncate text-xs font-bold">{user.name || 'Usuario'}</div>
-           </div>
-           <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
-             <LogOut className="w-4 h-4"/> Salir
-           </button>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0] || 'U'}</div>
+            <div className="truncate text-xs font-bold">{user.name || 'Usuario'}</div>
+          </div>
+          <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
         </div>
       </aside>
 
@@ -2135,60 +2165,60 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         {activeTab === 'search' && (
           <div className="space-y-8 max-w-5xl">
             <div className="flex items-center gap-2">
-               <div className="relative flex-1">
-                 <input 
-                   className="input-soft w-full pr-12" 
-                   placeholder="Buscar por nombre de trabajador u oficio..." 
-                   value={searchQuery} 
-                   onChange={e => setSearchQuery(e.target.value)}
-                   onKeyDown={e => {
-                     if (e.key === 'Enter') {
-                       handleSearch({ query: searchQuery });
-                     }
-                   }}
-                 />
-                 <button
-                   onClick={() => handleSearch({ query: searchQuery })}
-                   className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-primary text-white hover:opacity-90 transition-all"
-                   title="Buscar"
-                 >
-                   <Search className="w-4 h-4" />
-                 </button>
-               </div>
-               <Button onClick={() => handleSearch({})} className="px-8 shrink-0">Ver Todos</Button>
+              <div className="relative flex-1">
+                <input
+                  className="input-soft w-full pr-12"
+                  placeholder="Buscar por nombre de trabajador u oficio..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      handleSearch({ query: searchQuery });
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => handleSearch({ query: searchQuery })}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-primary text-white hover:opacity-90 transition-all"
+                  title="Buscar"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </div>
+              <Button onClick={() => handleSearch({})} className="px-8 shrink-0">Ver Todos</Button>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-               {trades.map(t => (
-                 <button 
-                   key={t.id_oficio} 
-                   onClick={() => handleSearch({ tradeId: t.id_oficio })} 
-                   className="p-4 bg-white rounded-2xl border border-slate-100 hover:border-accent transition-all text-center flex flex-col items-center gap-2"
-                 >
-                    <Briefcase className="w-4 h-4 text-primary"/>
-                    <span className="text-[10px] font-bold uppercase tracking-tighter">{t.nombre_oficio}</span>
-                 </button>
-               ))}
+              {trades.map(t => (
+                <button
+                  key={t.id_oficio}
+                  onClick={() => handleSearch({ tradeId: t.id_oficio })}
+                  className="p-4 bg-white rounded-2xl border border-slate-100 hover:border-accent transition-all text-center flex flex-col items-center gap-2"
+                >
+                  <Briefcase className="w-4 h-4 text-primary" />
+                  <span className="text-[10px] font-bold uppercase tracking-tighter">{t.nombre_oficio}</span>
+                </button>
+              ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {searchResults.length > 0 ? searchResults.map(w => {
-                 // Normalizar nombres de oficios (soporta formato legacy y nuevo)
-                 const workerTrades = w.oficios || w.oficio_del_trabajador?.map((ot: any) => ot?.oficios || ot).filter(Boolean) || [];
-                 const tradeNames = workerTrades.map((t: any) => t?.nombre_oficio).filter(Boolean).join(', ');
-                 return (
-                 <Card key={w.id_trabajador} className="p-6 space-y-4">
+              {searchResults.length > 0 ? searchResults.map(w => {
+                // Normalizar nombres de oficios (soporta formato legacy y nuevo)
+                const workerTrades = w.oficios || w.oficio_del_trabajador?.map((ot: any) => ot?.oficios || ot).filter(Boolean) || [];
+                const tradeNames = workerTrades.map((t: any) => t?.nombre_oficio).filter(Boolean).join(', ');
+                return (
+                  <Card key={w.id_trabajador} className="p-6 space-y-4">
                     <div className="flex items-center gap-4">
-                       <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
-                       <div>
-                         <h4 className="font-bold text-sm">{w.nombre_y_apellido_trabajador}</h4>
-                         {tradeNames && <p className="text-[10px] text-slate-500 font-medium">{tradeNames}</p>}
-                         <p className="text-[10px] text-slate-400">Puntaje: {w.puntuacion || '0.0'}</p>
-                       </div>
+                      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
+                      <div>
+                        <h4 className="font-bold text-sm">{w.nombre_y_apellido_trabajador}</h4>
+                        {tradeNames && <p className="text-[10px] text-slate-500 font-medium">{tradeNames}</p>}
+                        <p className="text-[10px] text-slate-400">Puntaje: {w.puntuacion || '0.0'}</p>
+                      </div>
                     </div>
                     <div className="flex gap-1">
                       {[...Array(5)].map((_, i) => (
-                        <Star key={i} className={`w-3 h-3 ${i < Math.round(Number(w.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`}/>
+                        <Star key={i} className={`w-3 h-3 ${i < Math.round(Number(w.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`} />
                       ))}
                     </div>
                     {tradeNames && (
@@ -2204,12 +2234,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       <Button variant="secondary" className="w-full text-xs" onClick={() => handleViewWorkerProfile(w.id_trabajador)}>Ver Perfil</Button>
                       <Button className="w-full text-xs" onClick={() => openConversation(w.id_trabajador)}>Contactar</Button>
                     </div>
-                 </Card>
-               )}) : (
-                 <div className="col-span-full py-12 text-center text-slate-400 font-medium">
-                   {searchQuery.trim() ? `No se encontraron resultados para "${searchQuery.trim()}".` : 'No se encontraron trabajadores en esta categoría.'}
-                 </div>
-               )}
+                  </Card>
+                )
+              }) : (
+                <div className="col-span-full py-12 text-center text-slate-400 font-medium">
+                  {searchQuery.trim() ? `No se encontraron resultados para "${searchQuery.trim()}".` : 'No se encontraron trabajadores en esta categoría.'}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2219,7 +2250,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Mensajes</h2>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" onClick={loadConversations}><RefreshCw className="w-4 h-4 mr-2"/>Actualizar</Button>
+                <Button variant="ghost" onClick={loadConversations}><RefreshCw className="w-4 h-4 mr-2" />Actualizar</Button>
               </div>
             </div>
 
@@ -2262,131 +2293,131 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         {activeTab === 'posts' && (
           <div className="space-y-8 max-w-4xl">
             <div className="flex justify-between items-center">
-               <h2 className="text-2xl font-bold">Mis Publicaciones en Foro</h2>
-               <Button onClick={() => setIsPosting(true)}>Nueva Publicación</Button>
+              <h2 className="text-2xl font-bold">Mis Publicaciones en Foro</h2>
+              <Button onClick={() => setIsPosting(true)}>Nueva Publicación</Button>
             </div>
 
             {isPosting && (
               <Card className="p-6 space-y-4 bg-primary/5 border-primary/20">
-                 {postNotice.text && (
-                   <div className={`rounded-2xl p-3 text-sm font-bold text-center ${postNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                     {postNotice.text}
-                   </div>
-                 )}
-                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <select
-                        className={`input-soft ${postErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`}
-                        value={newPost.tradeId}
-                        onChange={e => {
-                          setNewPost((prev) => ({ ...prev, tradeId: e.target.value }));
-                          clearPostError('tradeId');
-                        }}
-                      >
-                        <option value="">Selecciona un oficio</option>
-                        {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
-                      </select>
-                      {postErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.tradeId}</p>}
-                    </div>
-                    <div>
-                      <select
-                        className={`input-soft ${postErrors.urgency ? 'border-red-400 focus:border-red-500' : ''}`}
-                        value={newPost.urgency}
-                        onChange={e => {
-                          setNewPost((prev) => ({ ...prev, urgency: e.target.value }));
-                          clearPostError('urgency');
-                        }}
-                      >
-                        <option value="">Selecciona prioridad</option>
-                        <option value="Baja">Baja</option>
-                        <option value="Media">Media</option>
-                        <option value="Alta">Alta</option>
-                      </select>
-                      {postErrors.urgency && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.urgency}</p>}
-                    </div>
-                 </div>
-                 {/* Indicadores de validación dinámica */}
-                 <div className="flex flex-wrap gap-4 p-3 bg-white/50 rounded-xl border border-primary/10">
-                   <div className="flex items-center gap-2">
-                     <div className={`w-2 h-2 rounded-full ${newPost.tradeId ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-                     <span className={`text-xs font-bold ${newPost.tradeId ? 'text-green-600' : 'text-red-600'}`}>Oficio</span>
-                   </div>
-                   <div className="flex items-center gap-2">
-                     <div className={`w-2 h-2 rounded-full ${newPost.urgency ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-                     <span className={`text-xs font-bold ${newPost.urgency ? 'text-green-600' : 'text-red-600'}`}>Prioridad</span>
-                   </div>
-                   <div className="flex items-center gap-2">
-                     <div className={`w-2 h-2 rounded-full ${newPost.description.trim() ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-                     <span className={`text-xs font-bold ${newPost.description.trim() ? 'text-green-600' : 'text-red-600'}`}>Descripción</span>
-                   </div>
-                 </div>
-                 <div className="relative">
-                   <textarea
-                     className={`input-soft min-h-32 resize-none ${postErrors.description ? 'border-red-400 focus:border-red-500' : ''}`}
-                     placeholder="Describe qué necesitas (ej: Tengo una filtración en el baño...)"
-                     value={newPost.description}
-                     maxLength={maxPostDescriptionLength}
-                     onChange={e => {
-                       const value = e.target.value.slice(0, maxPostDescriptionLength);
-                       setNewPost((prev) => ({ ...prev, description: value }));
-                       clearPostError('description');
-                     }}
-                   />
-                   <div className="flex justify-between items-center mt-2 text-xs text-slate-500">
-                     <span className=""></span>
-                     <span className="font-semibold">{newPost.description.length} / {maxPostDescriptionLength}</span>
-                   </div>
-                   {postErrors.description && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.description}</p>}
-                 </div>
-                 <div className="flex justify-end gap-2">
-                    <Button variant="ghost" onClick={() => setIsPosting(false)}>Cancelar</Button>
-                    <Button onClick={handleCreatePost} disabled={isSaving || !newPost.description.trim() || !newPost.tradeId || !newPost.urgency}>Publicar</Button>
-                 </div>
+                {postNotice.text && (
+                  <div className={`rounded-2xl p-3 text-sm font-bold text-center ${postNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {postNotice.text}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <select
+                      className={`input-soft ${postErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`}
+                      value={newPost.tradeId}
+                      onChange={e => {
+                        setNewPost((prev) => ({ ...prev, tradeId: e.target.value }));
+                        clearPostError('tradeId');
+                      }}
+                    >
+                      <option value="">Selecciona un oficio</option>
+                      {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
+                    </select>
+                    {postErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.tradeId}</p>}
+                  </div>
+                  <div>
+                    <select
+                      className={`input-soft ${postErrors.urgency ? 'border-red-400 focus:border-red-500' : ''}`}
+                      value={newPost.urgency}
+                      onChange={e => {
+                        setNewPost((prev) => ({ ...prev, urgency: e.target.value }));
+                        clearPostError('urgency');
+                      }}
+                    >
+                      <option value="">Selecciona prioridad</option>
+                      <option value="Baja">Baja</option>
+                      <option value="Media">Media</option>
+                      <option value="Alta">Alta</option>
+                    </select>
+                    {postErrors.urgency && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.urgency}</p>}
+                  </div>
+                </div>
+                {/* Indicadores de validación dinámica */}
+                <div className="flex flex-wrap gap-4 p-3 bg-white/50 rounded-xl border border-primary/10">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${newPost.tradeId ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-xs font-bold ${newPost.tradeId ? 'text-green-600' : 'text-red-600'}`}>Oficio</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${newPost.urgency ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-xs font-bold ${newPost.urgency ? 'text-green-600' : 'text-red-600'}`}>Prioridad</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${newPost.description.trim() ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-xs font-bold ${newPost.description.trim() ? 'text-green-600' : 'text-red-600'}`}>Descripción</span>
+                  </div>
+                </div>
+                <div className="relative">
+                  <textarea
+                    className={`input-soft min-h-32 resize-none ${postErrors.description ? 'border-red-400 focus:border-red-500' : ''}`}
+                    placeholder="Describe qué necesitas (ej: Tengo una filtración en el baño...)"
+                    value={newPost.description}
+                    maxLength={maxPostDescriptionLength}
+                    onChange={e => {
+                      const value = e.target.value.slice(0, maxPostDescriptionLength);
+                      setNewPost((prev) => ({ ...prev, description: value }));
+                      clearPostError('description');
+                    }}
+                  />
+                  <div className="flex justify-between items-center mt-2 text-xs text-slate-500">
+                    <span className=""></span>
+                    <span className="font-semibold">{newPost.description.length} / {maxPostDescriptionLength}</span>
+                  </div>
+                  {postErrors.description && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.description}</p>}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" onClick={() => setIsPosting(false)}>Cancelar</Button>
+                  <Button onClick={handleCreatePost} disabled={isSaving || !newPost.description.trim() || !newPost.tradeId || !newPost.urgency}>Publicar</Button>
+                </div>
               </Card>
             )}
 
             <div className="space-y-4">
-               {posts.filter((p: any) => p.estado_publi !== 'Cancelada').length > 0 ? (
-                 posts
-                   .filter((p: any) => p.estado_publi !== 'Cancelada')
-                   .map((p: any) => (
-                     <Card key={p.id_publi} className="p-6 flex justify-between items-center">
-                        <div className="space-y-1">
-                           <div className="flex gap-2 mb-2">
-                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.tipo_urgencia === 'Alta' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Urgencia {p.tipo_urgencia}</span>
-                             {p.estado_publi === 'Abierta' && (
-                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Abierta</span>
-                             )}
-                             {p.estado_publi === 'En curso' && (
-                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">En curso</span>
-                             )}
-                             {p.estado_publi === 'Concretada' && (
-                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concretada</span>
-                             )}
-                             {p.estado_publi !== 'Abierta' && p.estado_publi !== 'En curso' && p.estado_publi !== 'Concretada' && (
-                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{p.estado_publi}</span>
-                             )}
-                           </div>
-                           <h4 className="font-bold text-slate-800">{p.oficios?.nombre_oficio}</h4>
-                           <p className="text-xs text-slate-500 max-w-lg">{p.descripcion_publi}</p>
-                        </div>
-                        <div className="flex gap-2">
+              {posts.filter((p: any) => p.estado_publi !== 'Cancelada').length > 0 ? (
+                posts
+                  .filter((p: any) => p.estado_publi !== 'Cancelada')
+                  .map((p: any) => (
+                    <Card key={p.id_publi} className="p-6 flex justify-between items-center">
+                      <div className="space-y-1">
+                        <div className="flex gap-2 mb-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.tipo_urgencia === 'Alta' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Urgencia {p.tipo_urgencia}</span>
                           {p.estado_publi === 'Abierta' && (
-                            <Button 
-                              variant="outline" 
-                              className="text-xs border-red-200 text-red-600 hover:bg-red-50"
-                              onClick={() => handleClosePost(p.id_publi)}
-                            >
-                              Eliminar Publicación
-                            </Button>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Abierta</span>
                           )}
-                          <Button variant="outline" className="text-xs" onClick={() => handleViewPostulations(p)}>Ver Presupuestos</Button>
+                          {p.estado_publi === 'En curso' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">En curso</span>
+                          )}
+                          {p.estado_publi === 'Concretada' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concretada</span>
+                          )}
+                          {p.estado_publi !== 'Abierta' && p.estado_publi !== 'En curso' && p.estado_publi !== 'Concretada' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{p.estado_publi}</span>
+                          )}
                         </div>
-                     </Card>
-                   ))
-               ) : (
-                  <div className="py-20 text-center text-slate-400">Aún no has realizado ninguna publicación.</div>
-               )}
+                        <h4 className="font-bold text-slate-800">{p.oficios?.nombre_oficio}</h4>
+                        <p className="text-xs text-slate-500 max-w-lg">{p.descripcion_publi}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        {p.estado_publi === 'Abierta' && (
+                          <Button
+                            variant="outline"
+                            className="text-xs border-red-200 text-red-600 hover:bg-red-50"
+                            onClick={() => handleClosePost(p.id_publi)}
+                          >
+                            Eliminar Publicación
+                          </Button>
+                        )}
+                        <Button variant="outline" className="text-xs" onClick={() => handleViewPostulations(p)}>Ver Presupuestos</Button>
+                      </div>
+                    </Card>
+                  ))
+              ) : (
+                <div className="py-20 text-center text-slate-400">Aún no has realizado ninguna publicación.</div>
+              )}
             </div>
           </div>
         )}
@@ -2410,13 +2441,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       <option value="rating_desc">Ordenar: Mejor calificacion</option>
                     </select>
                     <Button variant="ghost" onClick={() => setViewingPostulations(null)}>
-                      <ChevronLeft className="w-4 h-4 mr-2"/> Volver
+                      <ChevronLeft className="w-4 h-4 mr-2" /> Volver
                     </Button>
                   </div>
                 </div>
 
                 {isLoadingPostulations ? (
-                  <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary"/></div>
+                  <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
                 ) : sortedPostulations.length > 0 ? (
                   <div className="space-y-4">
                     {sortedPostulations.map((p: any) => (
@@ -2430,7 +2461,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                               <h5 className="font-bold text-sm">{p.trabajadores?.nombre_y_apellido_trabajador}</h5>
                               <div className="flex gap-1">
                                 {[...Array(5)].map((_, i) => (
-                                  <Star key={i} className={`w-2 h-2 ${i < Math.round(Number(p.trabajadores?.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`}/>
+                                  <Star key={i} className={`w-2 h-2 ${i < Math.round(Number(p.trabajadores?.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`} />
                                 ))}
                               </div>
                             </div>
@@ -2442,16 +2473,16 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         </div>
                         <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl italic">"{p.descripcion_postulacion}"</p>
                         <div className="mt-4 flex gap-2">
-                           <Button 
-                             className="w-full text-xs py-2"
-                             onClick={() => {
-                               setViewingPostulations(null);
-                               openConversation(p.id_trabajador, viewingPostulations.id_publi, p.id_postulacion);
-                             }}
-                           >
-                             Contactar
-                           </Button>
-                           <Button variant="outline" className="w-full text-xs py-2" onClick={() => handleViewWorkerProfile(p.id_trabajador)}>Ver Perfil</Button>
+                          <Button
+                            className="w-full text-xs py-2"
+                            onClick={() => {
+                              setViewingPostulations(null);
+                              openConversation(p.id_trabajador, viewingPostulations.id_publi, p.id_postulacion);
+                            }}
+                          >
+                            Contactar
+                          </Button>
+                          <Button variant="outline" className="w-full text-xs py-2" onClick={() => handleViewWorkerProfile(p.id_trabajador)}>Ver Perfil</Button>
                         </div>
                       </Card>
                     ))}
@@ -2600,25 +2631,25 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               </div>
             )}
             <Card className="p-8 space-y-6">
-               <div className="space-y-4">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
+                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                     <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
-                     <input className="input-soft" value={profileData.name} onChange={e => setProfileData({...profileData, name: e.target.value})} />
+                    <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
+                    <input className="input-soft" value={profileData.celular_cliente} onChange={e => setProfileData({ ...profileData, celular_cliente: e.target.value })} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
-                        <input className="input-soft" value={profileData.celular_cliente} onChange={e => setProfileData({...profileData, celular_cliente: e.target.value})} />
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase">Edad</label>
-                        <input className="input-soft" type="number" value={profileData.edad_cliente} onChange={e => setProfileData({...profileData, edad_cliente: e.target.value})} />
-                     </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase">Edad</label>
+                    <input className="input-soft" type="number" value={profileData.edad_cliente} onChange={e => setProfileData({ ...profileData, edad_cliente: e.target.value })} />
                   </div>
-               </div>
-               <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
-                  {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto"/> : 'Guardar Cambios'}
-               </Button>
+                </div>
+              </div>
+              <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
+                {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar Cambios'}
+              </Button>
             </Card>
           </div>
         )}
@@ -2785,24 +2816,24 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         </div>
         <nav className="flex-1 space-y-1">
           <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-            <div className="flex items-center gap-3"><MapPin className="w-4 h-4"/> Foro de Trabajos</div>
+            <div className="flex items-center gap-3"><MapPin className="w-4 h-4" /> Foro de Trabajos</div>
             {unreadForum > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadForum}</span>}
           </button>
           <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-            <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
+            <div className="flex items-center gap-3"><Inbox className="w-4 h-4" /> Mensajes</div>
             {unreadCountWorker > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountWorker}</span>}
           </button>
-          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
-          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4"/> Historial</button>
+          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4" /> Historial</button>
+          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4" /> Mi Perfil</button>
         </nav>
         <div className="pt-6 border-t flex flex-col gap-4">
-           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0]}</div>
-             <div className="truncate text-xs font-bold">{user.name}</div>
-           </div>
-           <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
-             <LogOut className="w-4 h-4"/> Salir
-           </button>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0]}</div>
+            <div className="truncate text-xs font-bold">{user.name}</div>
+          </div>
+          <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
         </div>
       </aside>
 
@@ -2864,63 +2895,63 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                 {postulationNotice.text}
               </div>
             )}
-            
+
             <div className="space-y-4">
-               {forumPosts.length > 0 ? forumPosts.map(p => (
-                 <Card key={p.id_publi} className="p-8 space-y-4 hover:shadow-lg transition-all border-l-4 border-l-primary">
-                    <div className="flex justify-between items-start">
-                       <div className="space-y-4 flex-1">
-                          <div className="flex items-center gap-4">
-                            <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-primary/10 text-primary uppercase tracking-widest">{p.oficios?.nombre_oficio}</span>
-                            <span className={`text-[10px] px-3 py-1 rounded-full font-bold ${p.tipo_urgencia === 'Alta' ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-700'}`}>Urgencia {p.tipo_urgencia}</span>
-                          </div>
-                          <div>
-                            <h3 className="text-xl font-bold text-slate-800">{p.clientes?.nombre_y_apellido_cliente}</h3>
-                            <p className="text-slate-500 max-w-2xl text-sm leading-relaxed mt-1">{p.descripcion_publi}</p>
-                          </div>
-                          <div className="flex items-center gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                            <span>{new Date(p.fecha_publi).toLocaleDateString()}</span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1"><ShieldCheck className="w-3 h-3"/> Cliente Verificado</span>
-                          </div>
-                       </div>
-                        <Button onClick={() => { setIsPostulating(p); setPostulationNotice({ text: '', type: null }); }} className="px-8">Enviar Presupuesto</Button>
+              {forumPosts.length > 0 ? forumPosts.map(p => (
+                <Card key={p.id_publi} className="p-8 space-y-4 hover:shadow-lg transition-all border-l-4 border-l-primary">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-4 flex-1">
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-primary/10 text-primary uppercase tracking-widest">{p.oficios?.nombre_oficio}</span>
+                        <span className={`text-[10px] px-3 py-1 rounded-full font-bold ${p.tipo_urgencia === 'Alta' ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-700'}`}>Urgencia {p.tipo_urgencia}</span>
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-800">{p.clientes?.nombre_y_apellido_cliente}</h3>
+                        <p className="text-slate-500 max-w-2xl text-sm leading-relaxed mt-1">{p.descripcion_publi}</p>
+                      </div>
+                      <div className="flex items-center gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        <span>{new Date(p.fecha_publi).toLocaleDateString()}</span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Cliente Verificado</span>
+                      </div>
                     </div>
-                 </Card>
-               )) : (
-                 <div className="py-20 text-center text-slate-400">No hay publicaciones disponibles en el foro actualmente.</div>
-               )}
+                    <Button onClick={() => { setIsPostulating(p); setPostulationNotice({ text: '', type: null }); }} className="px-8">Enviar Presupuesto</Button>
+                  </div>
+                </Card>
+              )) : (
+                <div className="py-20 text-center text-slate-400">No hay publicaciones disponibles en el foro actualmente.</div>
+              )}
             </div>
 
             {isPostulating && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                 <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-                   <Card className="max-w-md w-full p-8 space-y-6 bg-white shadow-2xl">
-                      <h3 className="text-2xl font-bold text-primary">Nuevo Presupuesto</h3>
-                      <div className="p-4 bg-slate-50 rounded-xl">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Para: {isPostulating.clientes?.nombre_y_apellido_cliente}</p>
-                        <p className="text-xs text-slate-600 line-clamp-2 italic">"{isPostulating.descripcion_publi}"</p>
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                  <Card className="max-w-md w-full p-8 space-y-6 bg-white shadow-2xl">
+                    <h3 className="text-2xl font-bold text-primary">Nuevo Presupuesto</h3>
+                    <div className="p-4 bg-slate-50 rounded-xl">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Para: {isPostulating.clientes?.nombre_y_apellido_cliente}</p>
+                      <p className="text-xs text-slate-600 line-clamp-2 italic">"{isPostulating.descripcion_publi}"</p>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Presupuesto Estimado ($)</label>
+                        <input className="input-soft" placeholder="Ej: 5000" type="number" value={budget.price} onChange={e => setBudget({ ...budget, price: e.target.value })} />
                       </div>
-                      <div className="space-y-4">
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Presupuesto Estimado ($)</label>
-                            <input className="input-soft" placeholder="Ej: 5000" type="number" value={budget.price} onChange={e => setBudget({...budget, price: e.target.value})} />
-                         </div>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Materiales Incluidos</label>
-                            <input className="input-soft" placeholder="Ej: Cables, tornillos..." value={budget.materials} onChange={e => setBudget({...budget, materials: e.target.value})} />
-                         </div>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Mensaje Adicional</label>
-                            <textarea className="input-soft min-h-24" placeholder="Cuéntale al cliente por qué eres el indicado..." value={budget.message} onChange={e => setBudget({...budget, message: e.target.value})} />
-                         </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Materiales Incluidos</label>
+                        <input className="input-soft" placeholder="Ej: Cables, tornillos..." value={budget.materials} onChange={e => setBudget({ ...budget, materials: e.target.value })} />
                       </div>
-                      <div className="flex gap-3 pt-2">
-                         <Button variant="ghost" className="flex-1" onClick={() => setIsPostulating(null)}>Cancelar</Button>
-                         <Button className="flex-1" onClick={handlePostulate} disabled={!budget.price}>Enviar Propuesta</Button>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Mensaje Adicional</label>
+                        <textarea className="input-soft min-h-24" placeholder="Cuéntale al cliente por qué eres el indicado..." value={budget.message} onChange={e => setBudget({ ...budget, message: e.target.value })} />
                       </div>
-                   </Card>
-                 </motion.div>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <Button variant="ghost" className="flex-1" onClick={() => setIsPostulating(null)}>Cancelar</Button>
+                      <Button className="flex-1" onClick={handlePostulate} disabled={!budget.price}>Enviar Propuesta</Button>
+                    </div>
+                  </Card>
+                </motion.div>
               </div>
             )}
           </>
@@ -2936,19 +2967,19 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               </div>
             )}
             <Card className="p-8 space-y-6">
-               <div className="space-y-4">
-                  <div className="space-y-1">
-                     <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
-                     <input className="input-soft" value={profileData.name} onChange={e => setProfileData({...profileData, name: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                     <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
-                     <input className="input-soft" value={profileData.nro_celular_trabajador} onChange={e => setProfileData({...profileData, nro_celular_trabajador: e.target.value})} />
-                  </div>
-               </div>
-               <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
-                  {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto"/> : 'Guardar Cambios'}
-               </Button>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
+                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
+                  <input className="input-soft" value={profileData.nro_celular_trabajador} onChange={e => setProfileData({ ...profileData, nro_celular_trabajador: e.target.value })} />
+                </div>
+              </div>
+              <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
+                {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar Cambios'}
+              </Button>
             </Card>
           </div>
         )}
@@ -2991,13 +3022,13 @@ export default function App() {
             <LandingPage onStart={handleStart} />
           </motion.div>
         )}
-        
+
         {view === 'auth' && (
           <motion.div key="auth" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }}>
-            <AuthForm 
-              initialIsLogin={initialIsLogin} 
-              onAuth={handleAuth} 
-              onBackToLanding={handleBackToLanding} 
+            <AuthForm
+              initialIsLogin={initialIsLogin}
+              onAuth={handleAuth}
+              onBackToLanding={handleBackToLanding}
             />
           </motion.div>
         )}
