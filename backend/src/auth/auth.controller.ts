@@ -85,6 +85,15 @@ export class AuthController {
     return this.authService.login(loginDto.correo, loginDto.contraseña, loginDto.rol);
   }
 
+  @Post('admin-login')
+  @HttpCode(HttpStatus.OK)
+  async adminLogin(@Body() loginDto: { correo: string; contraseña: string }) {
+    if (!loginDto.correo || !loginDto.contraseña) {
+      throw new BadRequestException('Datos de login de administrador incompletos');
+    }
+    return this.authService.adminLogin(loginDto.correo, loginDto.contraseña);
+  }
+
   @Post('test-db')
   @HttpCode(HttpStatus.OK)
   async testDbPost(@Res() res: Response) {

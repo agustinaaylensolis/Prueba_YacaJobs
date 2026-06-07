@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, Delete, BadRequestException, Inject, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, Delete, Patch, BadRequestException, Inject, ForbiddenException } from '@nestjs/common';
 import { JobsService } from './jobs.service.js';
 import { PostulateDto } from './dto/postulate.dto.js';
 import { CreatePostDto } from './dto/create-post.dto.js';
@@ -122,6 +122,30 @@ export class JobsController {
   @Post('conversations/open')
   async openConversation(@Body() data: OpenConversationDto) {
     return this.jobsService.openConversation(data);
+  }
+
+  @Get('history')
+  async getHistory(
+    @Query('userId') userId: string,
+    @Query('role') role: string,
+  ) {
+    const parsedUserId = parseInt(userId, 10);
+    if (Number.isNaN(parsedUserId) || !role) {
+      throw new BadRequestException('userId y role son requeridos y deben ser válidos');
+    }
+    return this.jobsService.getContractHistory(parsedUserId, role);
+  }
+
+  @Patch('posts/:id/close-manual')
+  async closePostManual(
+    @Param('id') id: string,
+    @Body('clientId') clientId: number,
+  ) {
+    const parsedPostId = parseInt(id, 10);
+    if (Number.isNaN(parsedPostId) || !clientId) {
+      throw new BadRequestException('ID de publicación y clientId inválidos');
+    }
+    return this.jobsService.closePostManual(parsedPostId, Number(clientId));
   }
 
   @Get('conversations')

@@ -1,26 +1,135 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3 } from 'lucide-react';
+import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3, Circle, Lock, Users, BarChart2, Trash2, Edit, Plus, ShieldAlert } from 'lucide-react';
 import RatingStars from './components/RatingStars';
-import NotificationBell from './components/NotificationBell';
 import { getWorkerRatings, createWorkerRating } from './lib/ratings';
 import { Rating } from './types';
 import { COLORS } from './constants';
 import { UserRole } from './types';
 import { supabase } from './lib/supabase';
 import { SearchStrategyFactory } from './strategies/SearchStrategyFactory';
+import HistoryTab from './components/HistoryTab';
+
+// --- Interfaces ---
+export interface Notification {
+  id_notificacion: number;
+  id_usuario: number;
+  tipo_usuario: string;
+  titulo: string;
+  mensaje: string;
+  id_publi?: number;
+  leido: boolean;
+  seccion_destino?: string;
+  fecha_creacion: string;
+}
+
+// --- Hooks ---
+export const useNotifications = (userId: number | undefined, role: UserRole) => {
+  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const parsedUserId = userId ? Number(userId) : undefined;
+    if (!parsedUserId || !Number.isFinite(parsedUserId)) return;
+
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase
+        .from('notificaciones')
+        .select('*')
+        .eq('id_usuario', parsedUserId)
+        .eq('tipo_usuario', role)
+        .order('fecha_creacion', { ascending: false })
+        .limit(20);
+
+      if (!error && data) {
+        setNotifications(data);
+        setUnreadCount(data.filter(n => !n.leido).length);
+      }
+    };
+
+    // Initial fetch
+    fetchNotifications();
+
+    // Setup polling fallback (every 10 seconds)
+    const intervalId = setInterval(fetchNotifications, 10000);
+
+    const roleStr = role === UserRole.CLIENT ? 'CLIENT' : 'WORKER';
+
+    // Setup Realtime subscription for all changes (*)
+    const channel = supabase
+      .channel(`notificaciones_changes_${roleStr}_${parsedUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notificaciones',
+          filter: `id_usuario=eq.${parsedUserId}`,
+        },
+        () => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(intervalId);
+      supabase.removeChannel(channel);
+    };
+  }, [userId, role]);
+
+  const markAsRead = async (id: number) => {
+    const { error } = await supabase.from('notificaciones').update({ leido: true }).eq('id_notificacion', id);
+    if (!error) {
+      setNotifications(prev => prev.map(n => n.id_notificacion === id ? { ...n, leido: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unreadIds = notifications.filter(n => !n.leido).map(n => n.id_notificacion);
+    if (unreadIds.length === 0) return;
+    const { error } = await supabase.from('notificaciones').update({ leido: true }).in('id_notificacion', unreadIds);
+    if (!error) {
+      setNotifications(prev => prev.map(n => ({ ...n, leido: true })));
+      setUnreadCount(0);
+    }
+  };
+
+  const markSectionAsRead = async (section: string) => {
+    const unreadIds = notifications.filter(n => !n.leido && n.seccion_destino === section).map(n => n.id_notificacion);
+    if (unreadIds.length === 0) return;
+    const { error } = await supabase.from('notificaciones').update({ leido: true }).in('id_notificacion', unreadIds);
+    if (!error) {
+      setNotifications(prev => prev.map(n => unreadIds.includes(n.id_notificacion) ? { ...n, leido: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - unreadIds.length));
+    }
+  };
+
+  return { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead };
+};
 
 // --- Sub-components ---
 
 const Logo = ({ variant = 1 }: { variant?: 1 | 2 }) => (
-  <div className="flex items-center gap-2">
-    <div className={`w-10 h-10 bg-primary rounded-2xl flex items-center justify-center p-1`}>
-      <img src="/images/logo1.png" alt="Logo" className="w-full h-full object-contain" onError={(e) => {
+  <div className="flex items-center gap-2 -ml-3">
+    <img
+      src="/images/logo1.png"
+      alt="Logo"
+      className="w-20 h-auto filter drop-shadow-[0_4px_6px_rgba(46,125,50,0.25)]"
+      onError={(e) => {
         // accion alternativa si la imagen no carga
         e.currentTarget.src = "/images/logo1.png";
-      }} />
-    </div>
-    {variant === 2 && <span className="text-2xl font-bold tracking-tight text-primary">YacaJobs</span>}
+      }}
+    />
+    {variant === 2 && (
+      <span
+        className="text-3xl font-black tracking-tight text-primary"
+        style={{ textShadow: '0 2px 5px rgba(46,125,50,0.30)' }}
+      >
+        YacaJobs
+      </span>
+    )}
   </div>
 );
 
@@ -30,9 +139,9 @@ const Card = ({ children, className = "" }: { children: React.ReactNode; classNa
   </div>
 );
 
-const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }: { 
-  children: React.ReactNode; 
-  onClick?: () => void; 
+const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }: {
+  children: React.ReactNode;
+  onClick?: () => void;
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
   className?: string;
   disabled?: boolean;
@@ -45,8 +154,8 @@ const Button = ({ children, onClick, variant = 'primary', className = "", disabl
     ghost: `text-muted hover:bg-gray-100`,
   };
   return (
-    <button 
-      onClick={onClick} 
+    <button
+      onClick={onClick}
       disabled={disabled}
       className={`soft-button cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
     >
@@ -356,7 +465,7 @@ const ConversationModal = ({
       if (res.ok) {
         const updated = await res.json();
         setCurrentContract(updated);
-        
+
         // Enviar mensaje automático indicando la intención de contratación
         await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
           method: 'POST',
@@ -467,8 +576,8 @@ const ConversationModal = ({
         const updated = await res.json();
         setCurrentContract(updated);
 
-        const materialsText = proposalData.materialesIncluidos 
-          ? `Incluye materiales: ${proposalData.descripcionMateriales}` 
+        const materialsText = proposalData.materialesIncluidos
+          ? `Incluye materiales: ${proposalData.descripcionMateriales}`
           : 'No incluye materiales.';
 
         // Enviar mensaje estructurado al chat
@@ -616,9 +725,49 @@ const ConversationModal = ({
     }
   };
 
+  const handleFinalizeContract = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas marcar este trabajo como finalizado/concretado?')) return;
+    setNotice({ text: '', type: null });
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          action: 'FINALIZE'
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+
+        // Enviar mensaje automático
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: '[TRABAJO FINALIZADO] ¡El servicio ha sido marcado como finalizado y concretado con éxito!'
+          })
+        });
+
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setNotice({ text: err.message || 'Error al finalizar contrato.', type: 'error' });
+      }
+    } catch {
+      setNotice({ text: 'Error de red.', type: 'error' });
+    }
+  };
+
   const isContractConfirmed = currentContract?.estado_contratacion === 'Confirmada';
   const eventDateString = currentContract?.fecha_hora || currentContract?.fecha_horario_acordado;
-  
+
   let timeToEvent: number | null = null;
   let isCancelDisabled = false;
 
@@ -626,11 +775,11 @@ const ConversationModal = ({
     let str = eventDateString as string;
     // Forzamos el uso de la 'T' para formato ISO
     str = str.replace(' ', 'T');
-    
+
     // Eliminamos cualquier offset de zona horaria (Z o +00:00) tomando solo los primeros 19 caracteres (YYYY-MM-DDTHH:mm:ss)
     // Esto asegura que el navegador interprete la fecha en la misma zona horaria local en la que el usuario la ingresó
     str = str.substring(0, 19);
-    
+
     const contractDate = new Date(str);
     const timeRemaining = contractDate.getTime() - Date.now();
     isCancelDisabled = timeRemaining <= 3600000; // 1 hora en ms
@@ -797,7 +946,7 @@ const ConversationModal = ({
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Propuesta de Trabajo</span>
                   <div className="text-lg font-black text-amber-900">${currentContract.monto}</div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div className="space-y-1">
                     <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Fecha y Hora</span>
@@ -857,20 +1006,29 @@ const ConversationModal = ({
                       <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
                     </div>
                   </div>
-                  <div className="shrink-0 flex flex-col items-end">
-                    <Button 
-                      variant="outline" 
-                      className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" 
-                      onClick={handleCancelConfirmedContract}
-                      disabled={!canCancel}
+                  <div className="shrink-0 flex items-center gap-3">
+                    <Button
+                      variant="primary"
+                      className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs py-2 px-4 font-bold"
+                      onClick={handleFinalizeContract}
                     >
-                      Cancelar contrato
+                      Finalizar Trabajo
                     </Button>
-                    {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
-                      <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
-                        No es posible cancelar con menos de 1 hora de anticipación.
-                      </span>
-                    )}
+                    <div className="flex flex-col items-end">
+                      <Button
+                        variant="outline"
+                        className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold"
+                        onClick={handleCancelConfirmedContract}
+                        disabled={!canCancel}
+                      >
+                        Cancelar contrato
+                      </Button>
+                      {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
+                        <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
+                          No es posible cancelar con menos de 1 hora de anticipación.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -894,7 +1052,7 @@ const ConversationModal = ({
                             Cancelar
                           </button>
                         </div>
-                        
+
                         {newRatingError && (
                           <div className="bg-red-100 text-red-700 p-3 rounded-xl text-xs font-bold">
                             {newRatingError}
@@ -963,6 +1121,18 @@ const ConversationModal = ({
                 <div>
                   <h5 className="font-bold text-sm text-red-800">✕ Contrato Rechazado</h5>
                   <p className="text-xs text-red-600">Este contrato ha sido rechazado de manera definitiva.</p>
+                </div>
+              </div>
+            )}
+
+            {currentContract?.estado_contratacion === 'Finalizada' && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-center gap-3 animate-fade-in">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="font-bold text-sm text-emerald-800">✓ Trabajo Finalizado</h5>
+                  <p className="text-xs text-emerald-600">Este servicio ha sido concretado y marcado como finalizado con éxito.</p>
                 </div>
               </div>
             )}
@@ -1148,54 +1318,68 @@ const ConversationModal = ({
 
 // --- Views ---
 
-const LandingPage = ({ onStart }: { onStart: (role: UserRole | null, isLogin: boolean) => void }) => (
+const LandingPage = ({ onStart, onAdminClick }: { onStart: (role: UserRole | null, isLogin: boolean) => void; onAdminClick: () => void }) => (
   <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-base/10">
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="max-w-4xl w-full text-center space-y-8"
     >
-      <div className="flex justify-center mb-8">
-        <div className="p-8 bg-white rounded-[4rem] shadow-xl">
-           <img src="/images/logo1.png" alt="Hero Logo" className="w-64 h-auto" onError={(e) => {
-             e.currentTarget.src = "/images/logo2.png";
-           }} />
-        </div>
+      <div className="flex flex-row items-center justify-center gap-2 mb-0">
+        <img src="/images/logo1.png" alt="Hero Logo" className="w-52 h-auto filter drop-shadow-[0_10px_15px_rgba(46,125,50,0.30)]" onError={(e) => {
+          e.currentTarget.src = "/images/logo2.png";
+        }} />
+        <span className="text-7xl font-black tracking-tight text-primary" style={{ textShadow: '0 4px 10px rgba(46,125,50,0.30)' }}>YacaJobs</span>
       </div>
-      
-      <h1 className="text-6xl font-extrabold text-primary tracking-tight leading-tight">
-        Conectamos trabajadores <span className="text-accent underline decoration-4 underline-offset-8">de oficio </span>con tus necesidades.
+
+      <h1 className="text-6xl font-extrabold text-primary tracking-tight leading-tight" style={{ textShadow: '0 4px 10px rgba(46,125,50,0.30)' }}>
+        Conectamos trabajadores <span className="text-accent underline decoration-4 underline-offset-8">de oficio </span>con tus necesidades
       </h1>
-      <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-        Busca trabajadores que te brinden la solucion a tu problema, o encuentra oportunidades laborales que se ajusten a tu experiencia y reputacion. Sin vueltas, con transparencia y resultados efectivos.
-      </p>
 
       <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
         <Button onClick={() => onStart(null, false)} className="text-lg px-12 py-5 shadow-lg shadow-primary/20">
           Comenzar ahora
         </Button>
-        <Button 
-          variant="outline" 
-          className="text-lg px-12 py-5"
+        <Button
+          variant="outline"
+          className="text-lg px-12 py-5 shadow-lg shadow-primary/20 bg-white"
           onClick={() => onStart(null, true)}
         >
           Ya tengo cuenta (Ingresar)
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20">
+      <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed mt-10 mb-6">
+        Busca trabajadores que te brinden la solucion a tu problema, o encuentra oportunidades laborales que se ajusten a tu experiencia y reputacion. Sin vueltas, con transparencia y resultados efectivos.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16">
         {[
-          { icon: <ShieldCheck className="w-8 h-8"/>, title: "Validación DNI", desc: "Seguridad total con validación de documentos obligatoria." },
-          { icon: <Star className="w-8 h-8"/>, title: "Sistema de Scoring", desc: "Contrata basado en reputación real y verificada." },
-          { icon: <CheckCircle2 className="w-8 h-8"/>, title: "Certificados", desc: "Trabajadores con antecedentes de buena conducta." }
+          { icon: <ShieldCheck className="w-8 h-8" />, title: "Validación DNI", desc: "Seguridad total con validación de documentos obligatoria." },
+          { icon: <Star className="w-8 h-8" />, title: "Sistema de Scoring", desc: "Contrata basado en reputación real y verificada." },
+          { icon: <CheckCircle2 className="w-8 h-8" />, title: "Certificados", desc: "Trabajadores con antecedentes de buena conducta." }
         ].map((feat, i) => (
-          <Card key={i} className="flex flex-col items-center text-center space-y-3 border-none bg-white/60 backdrop-blur-sm">
+          <Card key={i} className="flex flex-col items-center text-center space-y-3 border-none bg-white shadow-md">
             <div className="p-4 bg-primary/5 rounded-3xl text-primary">{feat.icon}</div>
             <h3 className="font-bold text-lg">{feat.title}</h3>
             <p className="text-sm text-gray-500">{feat.desc}</p>
           </Card>
         ))}
       </div>
+
+      {/* Footer */}
+      <footer className="pt-16 pb-4 border-t border-slate-200/50 text-xs text-slate-400 font-medium space-y-3 mt-12">
+        <p><span className="hover:text-primary transition-colors cursor-pointer">Términos y condiciones</span> • YacaJobs derechos reservados 2026 • Consultas: <a href="mailto:yacajobs@gmail.com" className="hover:text-primary transition-colors">yacajobs@gmail.com</a> </p>
+        <div className="flex justify-center">
+          <button
+            onClick={onAdminClick}
+            className="text-slate-400/30 hover:text-slate-400/70 transition-all duration-300 p-1 cursor-pointer"
+            title="Acceso Administración"
+          >
+            <Lock className="w-4 h-4" />
+          </button>
+        </div>
+      </footer>
     </motion.div>
   </div>
 );
@@ -1204,7 +1388,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
   const [role, setRole] = useState<UserRole | null>(null);
   const [step, setStep] = useState(1);
   const [isLogin, setIsLogin] = useState(initialIsLogin);
-  const [message, setMessage] = useState<{text: string, type: 'success' | 'error' | null}>({text: '', type: null});
+  const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [trades, setTrades] = useState<any[]>([]);
@@ -1410,7 +1594,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
   };
 
   const handleAuthOperation = async () => {
-    setMessage({text: '', type: null});
+    setMessage({ text: '', type: null });
     setFieldErrors({});
     setIsLoading(true);
 
@@ -1432,7 +1616,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         }
         const result = await response.json();
         setFieldErrors({});
-        setMessage({text: '¡Ingreso exitoso!', type: 'success'});
+        setMessage({ text: '¡Ingreso exitoso!', type: 'success' });
         setTimeout(() => onAuth(normalizeAuthUser(result)), 1000);
       } else {
         // Registration
@@ -1472,7 +1656,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         }
         const result = await response.json();
         setFieldErrors({});
-        setMessage({text: '¡Registro completado!', type: 'success'});
+        setMessage({ text: '¡Registro completado!', type: 'success' });
         setTimeout(() => onAuth(normalizeAuthUser(result)), 1000);
       }
     } catch (error: any) {
@@ -1481,7 +1665,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         setFieldErrors((prev) => ({ ...prev, ...backendFieldErrors }));
         jumpToFirstInvalidStep(backendFieldErrors);
       }
-      setMessage({text: backendMessage || 'No se pudo completar la operacion.', type: 'error'});
+      setMessage({ text: backendMessage || 'No se pudo completar la operacion.', type: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -1509,13 +1693,13 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
       <Card className="max-w-lg w-full p-10 space-y-8 bg-white relative overflow-hidden">
         {!isLogin && role && (
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-100">
-             <motion.div className="h-full bg-primary" initial={{ width: 0 }} animate={{ width: `${(step / 3) * 100}%` }} />
+            <motion.div className="h-full bg-primary" initial={{ width: 0 }} animate={{ width: `${(step / 3) * 100}%` }} />
           </div>
         )}
 
         <div className="absolute top-6 left-6">
           <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-full transition-all text-gray-400 hover:text-primary flex items-center gap-1 text-xs font-bold">
-            <ChevronLeft className="w-4 h-4"/>
+            <ChevronLeft className="w-4 h-4" />
             {role ? 'Atrás' : 'Inicio'}
           </button>
         </div>
@@ -1532,81 +1716,81 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
             <div className="grid grid-cols-1 gap-4">
               <button onClick={() => { setRole(UserRole.CLIENT); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
                 <div><h3 className="font-bold text-xl text-primary">Soy Cliente</h3><p className="text-sm text-muted">A contratar servicios.</p></div>
-                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all"/>
+                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all" />
               </button>
               <button onClick={() => { setRole(UserRole.WORKER); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="group p-6 bg-white border border-black/5 rounded-[32px] hover:border-accent transition-all text-left flex items-center justify-between shadow-sm">
                 <div><h3 className="font-bold text-xl text-primary">Soy Trabajador</h3><p className="text-sm text-muted">A ofrecer mis servicios.</p></div>
-                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all"/>
+                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-accent group-hover:translate-x-1 transition-all" />
               </button>
             </div>
           </div>
         ) : (
           <div className="space-y-6 pt-4">
             <h2 className="text-2xl font-bold text-primary">{isLogin ? 'Ingresar' : `Registro ${role === UserRole.CLIENT ? 'Cliente' : 'Trabajador'}`}</h2>
-            
+
             <AnimatePresence mode="wait">
               {(step === 1 || isLogin) && (
                 <motion.div key="s1" className="space-y-4">
-                   <div>
-                     <input className={`input-soft ${fieldErrors.email ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Correo" type="email" value={formData.email} onChange={e => setFormField('email', e.target.value)} />
-                     {fieldErrors.email && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.email}</p>}
-                   </div>
-                   <div>
-                     <input className={`input-soft ${fieldErrors.password ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Contraseña" type="password" value={formData.password} onChange={e => setFormField('password', e.target.value)} />
-                     {fieldErrors.password && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.password}</p>}
-                   </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.email ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Correo" type="email" value={formData.email} onChange={e => setFormField('email', e.target.value)} />
+                    {fieldErrors.email && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.email}</p>}
+                  </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.password ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Contraseña" type="password" value={formData.password} onChange={e => setFormField('password', e.target.value)} />
+                    {fieldErrors.password && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.password}</p>}
+                  </div>
                 </motion.div>
               )}
               {step === 2 && !isLogin && (
                 <motion.div key="s2" className="space-y-4">
-                   <div>
-                     <input className={`input-soft ${fieldErrors.name ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Nombre completo" value={formData.name} onChange={e => setFormField('name', e.target.value)} />
-                     {fieldErrors.name && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.name}</p>}
-                   </div>
-                   <div>
-                     <input className={`input-soft ${fieldErrors.dni ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="DNI" value={formData.dni} onChange={e => setFormField('dni', e.target.value)} />
-                     {fieldErrors.dni && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dni}</p>}
-                   </div>
-                   <div className="flex gap-4">
-                     <div className="flex-1">
-                       <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
-                       {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
-                     </div>
-                     <div className="flex-1">
-                       <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
-                       {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
-                     </div>
-                   </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.name ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Nombre completo" value={formData.name} onChange={e => setFormField('name', e.target.value)} />
+                    {fieldErrors.name && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.name}</p>}
+                  </div>
+                  <div>
+                    <input className={`input-soft ${fieldErrors.dni ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="DNI" value={formData.dni} onChange={e => setFormField('dni', e.target.value)} />
+                    {fieldErrors.dni && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dni}</p>}
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <input className={`input-soft ${fieldErrors.age ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Edad" type="number" value={formData.age} onChange={e => setFormField('age', e.target.value)} />
+                      {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
+                    </div>
+                    <div className="flex-1">
+                      <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
+                      {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
+                    </div>
+                  </div>
                 </motion.div>
               )}
               {step === 3 && !isLogin && (
                 <motion.div key="s3" className="space-y-4">
-                   <div className="space-y-2">
-                     <p className="text-xs font-bold text-gray-400 uppercase">Documentación Obligatoria</p>
-                     <div className="grid grid-cols-2 gap-4">
-                       <button onClick={() => setFileField('dniFront', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniFront ? 'border-red-400 text-red-600' : (formData.files.dniFront ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Frente</button>
-                       <button onClick={() => setFileField('dniBack', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniBack ? 'border-red-400 text-red-600' : (formData.files.dniBack ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Dorso</button>
-                     </div>
-                     {fieldErrors.dniFront && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniFront}</p>}
-                     {fieldErrors.dniBack && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniBack}</p>}
-                     {role === UserRole.WORKER && (
-                       <>
-                         <button onClick={() => setFileField('policeCert', {} as File)} className={`w-full p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.policeCert ? 'border-red-400 text-red-600' : (formData.files.policeCert ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>Antecedentes Penales</button>
-                         {fieldErrors.policeCert && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.policeCert}</p>}
-                         <select className={`input-soft ${fieldErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`} value={formData.tradeId} onChange={e => setFormField('tradeId', e.target.value)}>
-                           <option value="">Selecciona tu Oficio</option>
-                           {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
-                         </select>
-                         {fieldErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.tradeId}</p>}
-                       </>
-                     )}
-                   </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-gray-400 uppercase">Documentación Obligatoria</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button onClick={() => setFileField('dniFront', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniFront ? 'border-red-400 text-red-600' : (formData.files.dniFront ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Frente</button>
+                      <button onClick={() => setFileField('dniBack', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniBack ? 'border-red-400 text-red-600' : (formData.files.dniBack ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Dorso</button>
+                    </div>
+                    {fieldErrors.dniFront && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniFront}</p>}
+                    {fieldErrors.dniBack && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniBack}</p>}
+                    {role === UserRole.WORKER && (
+                      <>
+                        <button onClick={() => setFileField('policeCert', {} as File)} className={`w-full p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.policeCert ? 'border-red-400 text-red-600' : (formData.files.policeCert ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>Antecedentes Penales</button>
+                        {fieldErrors.policeCert && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.policeCert}</p>}
+                        <select className={`input-soft ${fieldErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`} value={formData.tradeId} onChange={e => setFormField('tradeId', e.target.value)}>
+                          <option value="">Selecciona tu Oficio</option>
+                          {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
+                        </select>
+                        {fieldErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.tradeId}</p>}
+                      </>
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
             <Button onClick={handleSubmitOrNext} disabled={isLoading} className="w-full py-4 text-lg flex justify-center items-center gap-2">
-              {isLoading && <Loader2 className="w-5 h-5 animate-spin"/>}
+              {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
               {isLogin ? 'Ingresar' : (step === 3 ? 'Finalizar' : 'Siguiente')}
             </Button>
             <button onClick={() => { setIsLogin(!isLogin); setStep(1); setFieldErrors({}); setMessage({ text: '', type: null }); }} className="w-full text-sm font-bold text-primary hover:underline">
@@ -1620,7 +1804,15 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
 };
 
 const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
-  const [activeTab, setActiveTab] = useState<'search' | 'posts' | 'profile' | 'messages'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'posts' | 'profile' | 'messages' | 'history'>('search');
+  const { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead } = useNotifications(user?.id_cliente, UserRole.CLIENT);
+  const unreadPosts = notifications.filter(n => !n.leido && n.seccion_destino === 'PEDIDOS').length;
+  const unreadMessages = notifications.filter(n => !n.leido && n.seccion_destino === 'MENSAJERIA').length;
+
+  React.useEffect(() => {
+    if (activeTab === 'posts') markSectionAsRead('PEDIDOS');
+    else if (activeTab === 'messages') markSectionAsRead('MENSAJERIA');
+  }, [activeTab, notifications]);
   const [trades, setTrades] = useState<any[]>([]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
@@ -1704,7 +1896,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     const strategy = SearchStrategyFactory.create(strategyType);
     try {
       const results = await strategy.execute(strategyParams);
-      setSearchResults(results);
+      // Ordenar descendente por puntuacion (mayor puntuacion primero, null/0 al final)
+      const sortedResults = (results || []).sort((a: any, b: any) => {
+        const scoreA = a.puntuacion === null || a.puntuacion === undefined ? 0 : Number(a.puntuacion);
+        const scoreB = b.puntuacion === null || b.puntuacion === undefined ? 0 : Number(b.puntuacion);
+        return scoreB - scoreA;
+      });
+      setSearchResults(sortedResults);
     } catch (error) {
       console.error('Error en búsqueda:', error);
       setSearchResults([]);
@@ -1787,6 +1985,26 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     }
   };
 
+  const handleClosePost = async (postId: number) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar esta publicación? Los trabajadores ya no podrán enviarte presupuestos.')) return;
+    try {
+      const res = await fetch(`/api/jobs/posts/${postId}/close-manual`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: user.id_cliente })
+      });
+      if (res.ok) {
+        // Update local state reactively
+        setPosts(prev => prev.map(p => p.id_publi === postId ? { ...p, estado_publi: 'Cancelada' } : p));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error al eliminar la publicación.');
+      }
+    } catch {
+      alert('Error de red al intentar eliminar la publicación.');
+    }
+  };
+
   const sortedPostulations = React.useMemo(() => {
     const list = [...postulations];
     if (postulationsSort === 'price_asc') {
@@ -1845,7 +2063,12 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const loadConversations = async () => {
     const res = await fetch(`/api/jobs/conversations?role=CLIENT&userId=${user.id_cliente}`);
-    if (res.ok) setConversations(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setConversations(data);
+      const totalUnread = data.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
+      setUnreadCountClient(totalUnread);
+    }
   };
 
   React.useEffect(() => {
@@ -1855,27 +2078,21 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   }, [activeTab]);
 
   React.useEffect(() => {
-    // inicializar conteo y actualizar cada 30s
-    loadConversations().then(() => {
-      setUnreadCountClient(conversations.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0));
-    });
-    const iv = setInterval(async () => {
-      await loadConversations();
-      setUnreadCountClient((prev) => {
-        // recompute from latest conversations state
-        return conversations.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
-      });
-    }, 30000);
+    loadConversations();
+    const iv = setInterval(loadConversations, 30000);
     return () => clearInterval(iv);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openConversation = async (workerId: number) => {
+  React.useEffect(() => {
+    loadConversations();
+  }, [notifications]);
+
+  const openConversation = async (workerId: number, publicationId?: number, postulationId?: number) => {
     setActiveTab('messages');
     setOpeningConversationId(workerId);
     const res = await fetch('/api/jobs/conversations/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: user.id_cliente, workerId })
+      body: JSON.stringify({ clientId: user.id_cliente, workerId, publicationId, postulationId })
     });
     if (!res.ok) {
       setOpeningConversationId(null);
@@ -1915,33 +2132,32 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen bg-slate-50 flex overflow-hidden">
       <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <Logo variant={2} />
-          <NotificationBell 
-            userId={user.id_cliente} 
-            role={UserRole.CLIENT} 
-            onNotificationClick={() => setActiveTab('posts')} 
-          />
         </div>
         <nav className="flex-1 space-y-1">
-          <button onClick={() => setActiveTab('search')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'search' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Search className="w-4 h-4"/> Buscar</button>
-          <button onClick={() => setActiveTab('posts')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'posts' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><FileText className="w-4 h-4"/> Mis Pedidos</button>
-          <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-            <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
-            {unreadCountClient > 0 && <span className="bg-primary text-white text-[12px] px-2 py-0.5 rounded-full">{unreadCountClient}</span>}
+          <button onClick={() => setActiveTab('search')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'search' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Search className="w-4 h-4" /> Buscar</button>
+          <button onClick={() => setActiveTab('posts')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'posts' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+            <div className="flex items-center gap-3"><FileText className="w-4 h-4" /> Mis Pedidos</div>
+            {unreadPosts > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadPosts}</span>}
           </button>
-          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
+          <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+            <div className="flex items-center gap-3"><Inbox className="w-4 h-4" /> Mensajes</div>
+            {unreadCountClient > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountClient}</span>}
+          </button>
+          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4" /> Historial</button>
+          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4" /> Mi Perfil</button>
         </nav>
         <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
-           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0] || 'U'}</div>
-             <div className="truncate text-xs font-bold">{user.name || 'Usuario'}</div>
-           </div>
-           <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
-             <LogOut className="w-4 h-4"/> Salir
-           </button>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0] || 'U'}</div>
+            <div className="truncate text-xs font-bold">{user.name || 'Usuario'}</div>
+          </div>
+          <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
         </div>
       </aside>
 
@@ -1949,60 +2165,60 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         {activeTab === 'search' && (
           <div className="space-y-8 max-w-5xl">
             <div className="flex items-center gap-2">
-               <div className="relative flex-1">
-                 <input 
-                   className="input-soft w-full pr-12" 
-                   placeholder="Buscar por nombre de trabajador u oficio..." 
-                   value={searchQuery} 
-                   onChange={e => setSearchQuery(e.target.value)}
-                   onKeyDown={e => {
-                     if (e.key === 'Enter') {
-                       handleSearch({ query: searchQuery });
-                     }
-                   }}
-                 />
-                 <button
-                   onClick={() => handleSearch({ query: searchQuery })}
-                   className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-primary text-white hover:opacity-90 transition-all"
-                   title="Buscar"
-                 >
-                   <Search className="w-4 h-4" />
-                 </button>
-               </div>
-               <Button onClick={() => handleSearch({})} className="px-8 shrink-0">Ver Todos</Button>
+              <div className="relative flex-1">
+                <input
+                  className="input-soft w-full pr-12"
+                  placeholder="Buscar por nombre de trabajador u oficio..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      handleSearch({ query: searchQuery });
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => handleSearch({ query: searchQuery })}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-primary text-white hover:opacity-90 transition-all"
+                  title="Buscar"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </div>
+              <Button onClick={() => handleSearch({})} className="px-8 shrink-0">Ver Todos</Button>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-               {trades.map(t => (
-                 <button 
-                   key={t.id_oficio} 
-                   onClick={() => handleSearch({ tradeId: t.id_oficio })} 
-                   className="p-4 bg-white rounded-2xl border border-slate-100 hover:border-accent transition-all text-center flex flex-col items-center gap-2"
-                 >
-                    <Briefcase className="w-4 h-4 text-primary"/>
-                    <span className="text-[10px] font-bold uppercase tracking-tighter">{t.nombre_oficio}</span>
-                 </button>
-               ))}
+              {trades.map(t => (
+                <button
+                  key={t.id_oficio}
+                  onClick={() => handleSearch({ tradeId: t.id_oficio })}
+                  className="p-4 bg-white rounded-2xl border border-slate-100 hover:border-accent transition-all text-center flex flex-col items-center gap-2"
+                >
+                  <Briefcase className="w-4 h-4 text-primary" />
+                  <span className="text-[10px] font-bold uppercase tracking-tighter">{t.nombre_oficio}</span>
+                </button>
+              ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {searchResults.length > 0 ? searchResults.map(w => {
-                 // Normalizar nombres de oficios (soporta formato legacy y nuevo)
-                 const workerTrades = w.oficios || w.oficio_del_trabajador?.map((ot: any) => ot?.oficios || ot).filter(Boolean) || [];
-                 const tradeNames = workerTrades.map((t: any) => t?.nombre_oficio).filter(Boolean).join(', ');
-                 return (
-                 <Card key={w.id_trabajador} className="p-6 space-y-4">
+              {searchResults.length > 0 ? searchResults.map(w => {
+                // Normalizar nombres de oficios (soporta formato legacy y nuevo)
+                const workerTrades = w.oficios || w.oficio_del_trabajador?.map((ot: any) => ot?.oficios || ot).filter(Boolean) || [];
+                const tradeNames = workerTrades.map((t: any) => t?.nombre_oficio).filter(Boolean).join(', ');
+                return (
+                  <Card key={w.id_trabajador} className="p-6 space-y-4">
                     <div className="flex items-center gap-4">
-                       <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
-                       <div>
-                         <h4 className="font-bold text-sm">{w.nombre_y_apellido_trabajador}</h4>
-                         {tradeNames && <p className="text-[10px] text-slate-500 font-medium">{tradeNames}</p>}
-                         <p className="text-[10px] text-slate-400">Puntaje: {w.puntuacion || '0.0'}</p>
-                       </div>
+                      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
+                      <div>
+                        <h4 className="font-bold text-sm">{w.nombre_y_apellido_trabajador}</h4>
+                        {tradeNames && <p className="text-[10px] text-slate-500 font-medium">{tradeNames}</p>}
+                        <p className="text-[10px] text-slate-400">Puntaje: {w.puntuacion || '0.0'}</p>
+                      </div>
                     </div>
                     <div className="flex gap-1">
                       {[...Array(5)].map((_, i) => (
-                        <Star key={i} className={`w-3 h-3 ${i < Math.round(Number(w.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`}/>
+                        <Star key={i} className={`w-3 h-3 ${i < Math.round(Number(w.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`} />
                       ))}
                     </div>
                     {tradeNames && (
@@ -2018,12 +2234,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       <Button variant="secondary" className="w-full text-xs" onClick={() => handleViewWorkerProfile(w.id_trabajador)}>Ver Perfil</Button>
                       <Button className="w-full text-xs" onClick={() => openConversation(w.id_trabajador)}>Contactar</Button>
                     </div>
-                 </Card>
-               )}) : (
-                 <div className="col-span-full py-12 text-center text-slate-400 font-medium">
-                   {searchQuery.trim() ? `No se encontraron resultados para "${searchQuery.trim()}".` : 'No se encontraron trabajadores en esta categoría.'}
-                 </div>
-               )}
+                  </Card>
+                )
+              }) : (
+                <div className="col-span-full py-12 text-center text-slate-400 font-medium">
+                  {searchQuery.trim() ? `No se encontraron resultados para "${searchQuery.trim()}".` : 'No se encontraron trabajadores en esta categoría.'}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2033,7 +2250,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Mensajes</h2>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" onClick={loadConversations}><RefreshCw className="w-4 h-4 mr-2"/>Actualizar</Button>
+                <Button variant="ghost" onClick={loadConversations}><RefreshCw className="w-4 h-4 mr-2" />Actualizar</Button>
               </div>
             </div>
 
@@ -2076,105 +2293,131 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
         {activeTab === 'posts' && (
           <div className="space-y-8 max-w-4xl">
             <div className="flex justify-between items-center">
-               <h2 className="text-2xl font-bold">Mis Publicaciones en Foro</h2>
-               <Button onClick={() => setIsPosting(true)}>Nueva Publicación</Button>
+              <h2 className="text-2xl font-bold">Mis Publicaciones en Foro</h2>
+              <Button onClick={() => setIsPosting(true)}>Nueva Publicación</Button>
             </div>
 
             {isPosting && (
               <Card className="p-6 space-y-4 bg-primary/5 border-primary/20">
-                 {postNotice.text && (
-                   <div className={`rounded-2xl p-3 text-sm font-bold text-center ${postNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                     {postNotice.text}
-                   </div>
-                 )}
-                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <select
-                        className={`input-soft ${postErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`}
-                        value={newPost.tradeId}
-                        onChange={e => {
-                          setNewPost((prev) => ({ ...prev, tradeId: e.target.value }));
-                          clearPostError('tradeId');
-                        }}
-                      >
-                        <option value="">Selecciona un oficio</option>
-                        {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
-                      </select>
-                      {postErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.tradeId}</p>}
-                    </div>
-                    <div>
-                      <select
-                        className={`input-soft ${postErrors.urgency ? 'border-red-400 focus:border-red-500' : ''}`}
-                        value={newPost.urgency}
-                        onChange={e => {
-                          setNewPost((prev) => ({ ...prev, urgency: e.target.value }));
-                          clearPostError('urgency');
-                        }}
-                      >
-                        <option value="">Selecciona prioridad</option>
-                        <option value="Baja">Baja</option>
-                        <option value="Media">Media</option>
-                        <option value="Alta">Alta</option>
-                      </select>
-                      {postErrors.urgency && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.urgency}</p>}
-                    </div>
-                 </div>
-                 {/* Indicadores de validación dinámica */}
-                 <div className="flex flex-wrap gap-4 p-3 bg-white/50 rounded-xl border border-primary/10">
-                   <div className="flex items-center gap-2">
-                     <div className={`w-2 h-2 rounded-full ${newPost.tradeId ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-                     <span className={`text-xs font-bold ${newPost.tradeId ? 'text-green-600' : 'text-red-600'}`}>Oficio</span>
-                   </div>
-                   <div className="flex items-center gap-2">
-                     <div className={`w-2 h-2 rounded-full ${newPost.urgency ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-                     <span className={`text-xs font-bold ${newPost.urgency ? 'text-green-600' : 'text-red-600'}`}>Prioridad</span>
-                   </div>
-                   <div className="flex items-center gap-2">
-                     <div className={`w-2 h-2 rounded-full ${newPost.description.trim() ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-                     <span className={`text-xs font-bold ${newPost.description.trim() ? 'text-green-600' : 'text-red-600'}`}>Descripción</span>
-                   </div>
-                 </div>
-                 <div className="relative">
-                   <textarea
-                     className={`input-soft min-h-32 resize-none ${postErrors.description ? 'border-red-400 focus:border-red-500' : ''}`}
-                     placeholder="Describe qué necesitas (ej: Tengo una filtración en el baño...)"
-                     value={newPost.description}
-                     maxLength={maxPostDescriptionLength}
-                     onChange={e => {
-                       const value = e.target.value.slice(0, maxPostDescriptionLength);
-                       setNewPost((prev) => ({ ...prev, description: value }));
-                       clearPostError('description');
-                     }}
-                   />
-                   <div className="flex justify-between items-center mt-2 text-xs text-slate-500">
-                     <span className=""></span>
-                     <span className="font-semibold">{newPost.description.length} / {maxPostDescriptionLength}</span>
-                   </div>
-                   {postErrors.description && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.description}</p>}
-                 </div>
-                 <div className="flex justify-end gap-2">
-                    <Button variant="ghost" onClick={() => setIsPosting(false)}>Cancelar</Button>
-                    <Button onClick={handleCreatePost} disabled={isSaving || !newPost.description.trim() || !newPost.tradeId || !newPost.urgency}>Publicar</Button>
-                 </div>
+                {postNotice.text && (
+                  <div className={`rounded-2xl p-3 text-sm font-bold text-center ${postNotice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {postNotice.text}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <select
+                      className={`input-soft ${postErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`}
+                      value={newPost.tradeId}
+                      onChange={e => {
+                        setNewPost((prev) => ({ ...prev, tradeId: e.target.value }));
+                        clearPostError('tradeId');
+                      }}
+                    >
+                      <option value="">Selecciona un oficio</option>
+                      {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
+                    </select>
+                    {postErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.tradeId}</p>}
+                  </div>
+                  <div>
+                    <select
+                      className={`input-soft ${postErrors.urgency ? 'border-red-400 focus:border-red-500' : ''}`}
+                      value={newPost.urgency}
+                      onChange={e => {
+                        setNewPost((prev) => ({ ...prev, urgency: e.target.value }));
+                        clearPostError('urgency');
+                      }}
+                    >
+                      <option value="">Selecciona prioridad</option>
+                      <option value="Baja">Baja</option>
+                      <option value="Media">Media</option>
+                      <option value="Alta">Alta</option>
+                    </select>
+                    {postErrors.urgency && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.urgency}</p>}
+                  </div>
+                </div>
+                {/* Indicadores de validación dinámica */}
+                <div className="flex flex-wrap gap-4 p-3 bg-white/50 rounded-xl border border-primary/10">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${newPost.tradeId ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-xs font-bold ${newPost.tradeId ? 'text-green-600' : 'text-red-600'}`}>Oficio</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${newPost.urgency ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-xs font-bold ${newPost.urgency ? 'text-green-600' : 'text-red-600'}`}>Prioridad</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${newPost.description.trim() ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-xs font-bold ${newPost.description.trim() ? 'text-green-600' : 'text-red-600'}`}>Descripción</span>
+                  </div>
+                </div>
+                <div className="relative">
+                  <textarea
+                    className={`input-soft min-h-32 resize-none ${postErrors.description ? 'border-red-400 focus:border-red-500' : ''}`}
+                    placeholder="Describe qué necesitas (ej: Tengo una filtración en el baño...)"
+                    value={newPost.description}
+                    maxLength={maxPostDescriptionLength}
+                    onChange={e => {
+                      const value = e.target.value.slice(0, maxPostDescriptionLength);
+                      setNewPost((prev) => ({ ...prev, description: value }));
+                      clearPostError('description');
+                    }}
+                  />
+                  <div className="flex justify-between items-center mt-2 text-xs text-slate-500">
+                    <span className=""></span>
+                    <span className="font-semibold">{newPost.description.length} / {maxPostDescriptionLength}</span>
+                  </div>
+                  {postErrors.description && <p className="text-xs text-red-600 font-semibold mt-1">{postErrors.description}</p>}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" onClick={() => setIsPosting(false)}>Cancelar</Button>
+                  <Button onClick={handleCreatePost} disabled={isSaving || !newPost.description.trim() || !newPost.tradeId || !newPost.urgency}>Publicar</Button>
+                </div>
               </Card>
             )}
 
             <div className="space-y-4">
-               {posts.length > 0 ? posts.map(p => (
-                 <Card key={p.id_publi} className="p-6 flex justify-between items-center">
-                    <div className="space-y-1">
-                       <div className="flex gap-2 mb-2">
-                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.tipo_urgencia === 'Alta' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Urgencia {p.tipo_urgencia}</span>
-                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600`}>{p.estado_publi}</span>
-                       </div>
-                       <h4 className="font-bold text-slate-800">{p.oficios?.nombre_oficio}</h4>
-                       <p className="text-xs text-slate-500 max-w-lg">{p.descripcion_publi}</p>
-                    </div>
-                    <Button variant="outline" className="text-xs" onClick={() => handleViewPostulations(p)}>Ver Presupuestos</Button>
-                 </Card>
-               )) : (
-                 <div className="py-20 text-center text-slate-400">Aún no has realizado ninguna publicación.</div>
-               )}
+              {posts.filter((p: any) => p.estado_publi !== 'Cancelada').length > 0 ? (
+                posts
+                  .filter((p: any) => p.estado_publi !== 'Cancelada')
+                  .map((p: any) => (
+                    <Card key={p.id_publi} className="p-6 flex justify-between items-center">
+                      <div className="space-y-1">
+                        <div className="flex gap-2 mb-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.tipo_urgencia === 'Alta' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Urgencia {p.tipo_urgencia}</span>
+                          {p.estado_publi === 'Abierta' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Abierta</span>
+                          )}
+                          {p.estado_publi === 'En curso' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">En curso</span>
+                          )}
+                          {p.estado_publi === 'Concretada' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concretada</span>
+                          )}
+                          {p.estado_publi !== 'Abierta' && p.estado_publi !== 'En curso' && p.estado_publi !== 'Concretada' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{p.estado_publi}</span>
+                          )}
+                        </div>
+                        <h4 className="font-bold text-slate-800">{p.oficios?.nombre_oficio}</h4>
+                        <p className="text-xs text-slate-500 max-w-lg">{p.descripcion_publi}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        {p.estado_publi === 'Abierta' && (
+                          <Button
+                            variant="outline"
+                            className="text-xs border-red-200 text-red-600 hover:bg-red-50"
+                            onClick={() => handleClosePost(p.id_publi)}
+                          >
+                            Eliminar Publicación
+                          </Button>
+                        )}
+                        <Button variant="outline" className="text-xs" onClick={() => handleViewPostulations(p)}>Ver Presupuestos</Button>
+                      </div>
+                    </Card>
+                  ))
+              ) : (
+                <div className="py-20 text-center text-slate-400">Aún no has realizado ninguna publicación.</div>
+              )}
             </div>
           </div>
         )}
@@ -2198,13 +2441,13 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       <option value="rating_desc">Ordenar: Mejor calificacion</option>
                     </select>
                     <Button variant="ghost" onClick={() => setViewingPostulations(null)}>
-                      <ChevronLeft className="w-4 h-4 mr-2"/> Volver
+                      <ChevronLeft className="w-4 h-4 mr-2" /> Volver
                     </Button>
                   </div>
                 </div>
 
                 {isLoadingPostulations ? (
-                  <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary"/></div>
+                  <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
                 ) : sortedPostulations.length > 0 ? (
                   <div className="space-y-4">
                     {sortedPostulations.map((p: any) => (
@@ -2218,7 +2461,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                               <h5 className="font-bold text-sm">{p.trabajadores?.nombre_y_apellido_trabajador}</h5>
                               <div className="flex gap-1">
                                 {[...Array(5)].map((_, i) => (
-                                  <Star key={i} className={`w-2 h-2 ${i < Math.round(Number(p.trabajadores?.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`}/>
+                                  <Star key={i} className={`w-2 h-2 ${i < Math.round(Number(p.trabajadores?.puntuacion || 0)) ? 'text-yellow-400 fill-current' : 'text-slate-200'}`} />
                                 ))}
                               </div>
                             </div>
@@ -2230,8 +2473,16 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         </div>
                         <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl italic">"{p.descripcion_postulacion}"</p>
                         <div className="mt-4 flex gap-2">
-                           <Button className="w-full text-xs py-2">Contactar</Button>
-                           <Button variant="outline" className="w-full text-xs py-2" onClick={() => handleViewWorkerProfile(p.id_trabajador)}>Ver Perfil</Button>
+                          <Button
+                            className="w-full text-xs py-2"
+                            onClick={() => {
+                              setViewingPostulations(null);
+                              openConversation(p.id_trabajador, viewingPostulations.id_publi, p.id_postulacion);
+                            }}
+                          >
+                            Contactar
+                          </Button>
+                          <Button variant="outline" className="w-full text-xs py-2" onClick={() => handleViewWorkerProfile(p.id_trabajador)}>Ver Perfil</Button>
                         </div>
                       </Card>
                     ))}
@@ -2380,27 +2631,31 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               </div>
             )}
             <Card className="p-8 space-y-6">
-               <div className="space-y-4">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
+                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                     <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
-                     <input className="input-soft" value={profileData.name} onChange={e => setProfileData({...profileData, name: e.target.value})} />
+                    <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
+                    <input className="input-soft" value={profileData.celular_cliente} onChange={e => setProfileData({ ...profileData, celular_cliente: e.target.value })} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
-                        <input className="input-soft" value={profileData.celular_cliente} onChange={e => setProfileData({...profileData, celular_cliente: e.target.value})} />
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase">Edad</label>
-                        <input className="input-soft" type="number" value={profileData.edad_cliente} onChange={e => setProfileData({...profileData, edad_cliente: e.target.value})} />
-                     </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase">Edad</label>
+                    <input className="input-soft" type="number" value={profileData.edad_cliente} onChange={e => setProfileData({ ...profileData, edad_cliente: e.target.value })} />
                   </div>
-               </div>
-               <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
-                  {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto"/> : 'Guardar Cambios'}
-               </Button>
+                </div>
+              </div>
+              <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
+                {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar Cambios'}
+              </Button>
             </Card>
           </div>
+        )}
+
+        {activeTab === 'history' && (
+          <HistoryTab user={user} role={UserRole.CLIENT} />
         )}
       </main>
     </div>
@@ -2408,7 +2663,15 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 };
 
 const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
-  const [activeTab, setActiveTab] = useState<'forum' | 'profile' | 'messages'>('forum');
+  const [activeTab, setActiveTab] = useState<'forum' | 'profile' | 'messages' | 'history'>('forum');
+  const { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead } = useNotifications(user?.id_trabajador, UserRole.WORKER);
+  const unreadForum = notifications.filter(n => !n.leido && n.seccion_destino === 'FORO').length;
+  const unreadMessages = notifications.filter(n => !n.leido && n.seccion_destino === 'MENSAJERIA').length;
+
+  React.useEffect(() => {
+    if (activeTab === 'forum') markSectionAsRead('FORO');
+    else if (activeTab === 'messages') markSectionAsRead('MENSAJERIA');
+  }, [activeTab, notifications]);
   const [forumPosts, setForumPosts] = useState<any[]>([]);
   const [isPostulating, setIsPostulating] = useState<any>(null);
   const [budget, setBudget] = useState({ price: '', materials: '', message: '' });
@@ -2445,18 +2708,24 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const loadWorkerConversations = async () => {
     const res = await fetch(`/api/jobs/conversations?role=WORKER&userId=${user.id_trabajador}`);
-    if (res.ok) setWorkerConversations(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setWorkerConversations(data);
+      const totalUnread = data.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0);
+      setUnreadCountWorker(totalUnread);
+    }
   };
 
   React.useEffect(() => {
-    loadWorkerConversations().then(() => setUnreadCountWorker(workerConversations.reduce((s: number, c: any) => s + (c.unread_count || 0), 0)));
-    const iv = setInterval(async () => {
-      await loadWorkerConversations();
-      setUnreadCountWorker(workerConversations.reduce((s: number, c: any) => s + (c.unread_count || 0), 0));
-    }, 30000);
+    loadWorkerConversations();
+    const iv = setInterval(loadWorkerConversations, 30000);
     return () => clearInterval(iv);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    loadWorkerConversations();
+    loadPosts();
+  }, [notifications]);
 
   const openWorkerConversation = (conversation: any) => {
     setActiveTab('messages');
@@ -2540,32 +2809,31 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen bg-slate-50 flex overflow-hidden">
       <aside className="w-64 bg-white border-r p-6 flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <Logo variant={2} />
-          <NotificationBell 
-            userId={user.id_trabajador} 
-            role={UserRole.WORKER} 
-            onNotificationClick={(id) => { if (id) setActiveTab('forum'); }} 
-          />
         </div>
         <nav className="flex-1 space-y-1">
-          <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><MapPin className="w-4 h-4"/> Foro de Trabajos</button>
-          <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-            <div className="flex items-center gap-3"><Inbox className="w-4 h-4"/> Mensajes</div>
-            {unreadCountWorker > 0 && <span className="bg-primary text-white text-[12px] px-2 py-0.5 rounded-full">{unreadCountWorker}</span>}
+          <button onClick={() => setActiveTab('forum')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'forum' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+            <div className="flex items-center gap-3"><MapPin className="w-4 h-4" /> Foro de Trabajos</div>
+            {unreadForum > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadForum}</span>}
           </button>
-          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
+          <button onClick={() => setActiveTab('messages')} className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'messages' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+            <div className="flex items-center gap-3"><Inbox className="w-4 h-4" /> Mensajes</div>
+            {unreadCountWorker > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountWorker}</span>}
+          </button>
+          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4" /> Historial</button>
+          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4" /> Mi Perfil</button>
         </nav>
         <div className="pt-6 border-t flex flex-col gap-4">
-           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0]}</div>
-             <div className="truncate text-xs font-bold">{user.name}</div>
-           </div>
-           <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
-             <LogOut className="w-4 h-4"/> Salir
-           </button>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">{user.name?.[0]}</div>
+            <div className="truncate text-xs font-bold">{user.name}</div>
+          </div>
+          <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
         </div>
       </aside>
 
@@ -2627,66 +2895,68 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                 {postulationNotice.text}
               </div>
             )}
-            
+
             <div className="space-y-4">
-               {forumPosts.length > 0 ? forumPosts.map(p => (
-                 <Card key={p.id_publi} className="p-8 space-y-4 hover:shadow-lg transition-all border-l-4 border-l-primary">
-                    <div className="flex justify-between items-start">
-                       <div className="space-y-4 flex-1">
-                          <div className="flex items-center gap-4">
-                            <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-primary/10 text-primary uppercase tracking-widest">{p.oficios?.nombre_oficio}</span>
-                            <span className={`text-[10px] px-3 py-1 rounded-full font-bold ${p.tipo_urgencia === 'Alta' ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-700'}`}>Urgencia {p.tipo_urgencia}</span>
-                          </div>
-                          <div>
-                            <h3 className="text-xl font-bold text-slate-800">{p.clientes?.nombre_y_apellido_cliente}</h3>
-                            <p className="text-slate-500 max-w-2xl text-sm leading-relaxed mt-1">{p.descripcion_publi}</p>
-                          </div>
-                          <div className="flex items-center gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                            <span>{new Date(p.fecha_publi).toLocaleDateString()}</span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1"><ShieldCheck className="w-3 h-3"/> Cliente Verificado</span>
-                          </div>
-                       </div>
-                        <Button onClick={() => { setIsPostulating(p); setPostulationNotice({ text: '', type: null }); }} className="px-8">Enviar Presupuesto</Button>
+              {forumPosts.length > 0 ? forumPosts.map(p => (
+                <Card key={p.id_publi} className="p-8 space-y-4 hover:shadow-lg transition-all border-l-4 border-l-primary">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-4 flex-1">
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-primary/10 text-primary uppercase tracking-widest">{p.oficios?.nombre_oficio}</span>
+                        <span className={`text-[10px] px-3 py-1 rounded-full font-bold ${p.tipo_urgencia === 'Alta' ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-700'}`}>Urgencia {p.tipo_urgencia}</span>
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-800">{p.clientes?.nombre_y_apellido_cliente}</h3>
+                        <p className="text-slate-500 max-w-2xl text-sm leading-relaxed mt-1">{p.descripcion_publi}</p>
+                      </div>
+                      <div className="flex items-center gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        <span>{new Date(p.fecha_publi).toLocaleDateString()}</span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Cliente Verificado</span>
+                      </div>
                     </div>
-                 </Card>
-               )) : (
-                 <div className="py-20 text-center text-slate-400">No hay publicaciones disponibles en el foro actualmente.</div>
-               )}
+                    <Button onClick={() => { setIsPostulating(p); setPostulationNotice({ text: '', type: null }); }} className="px-8">Enviar Presupuesto</Button>
+                  </div>
+                </Card>
+              )) : (
+                <div className="py-20 text-center text-slate-400">No hay publicaciones disponibles en el foro actualmente.</div>
+              )}
             </div>
 
             {isPostulating && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                 <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-                   <Card className="max-w-md w-full p-8 space-y-6 bg-white shadow-2xl">
-                      <h3 className="text-2xl font-bold text-primary">Nuevo Presupuesto</h3>
-                      <div className="p-4 bg-slate-50 rounded-xl">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Para: {isPostulating.clientes?.nombre_y_apellido_cliente}</p>
-                        <p className="text-xs text-slate-600 line-clamp-2 italic">"{isPostulating.descripcion_publi}"</p>
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                  <Card className="max-w-md w-full p-8 space-y-6 bg-white shadow-2xl">
+                    <h3 className="text-2xl font-bold text-primary">Nuevo Presupuesto</h3>
+                    <div className="p-4 bg-slate-50 rounded-xl">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Para: {isPostulating.clientes?.nombre_y_apellido_cliente}</p>
+                      <p className="text-xs text-slate-600 line-clamp-2 italic">"{isPostulating.descripcion_publi}"</p>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Presupuesto Estimado ($)</label>
+                        <input className="input-soft" placeholder="Ej: 5000" type="number" value={budget.price} onChange={e => setBudget({ ...budget, price: e.target.value })} />
                       </div>
-                      <div className="space-y-4">
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Presupuesto Estimado ($)</label>
-                            <input className="input-soft" placeholder="Ej: 5000" type="number" value={budget.price} onChange={e => setBudget({...budget, price: e.target.value})} />
-                         </div>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Materiales Incluidos</label>
-                            <input className="input-soft" placeholder="Ej: Cables, tornillos..." value={budget.materials} onChange={e => setBudget({...budget, materials: e.target.value})} />
-                         </div>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Mensaje Adicional</label>
-                            <textarea className="input-soft min-h-24" placeholder="Cuéntale al cliente por qué eres el indicado..." value={budget.message} onChange={e => setBudget({...budget, message: e.target.value})} />
-                         </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Materiales Incluidos</label>
+                        <input className="input-soft" placeholder="Ej: Cables, tornillos..." value={budget.materials} onChange={e => setBudget({ ...budget, materials: e.target.value })} />
                       </div>
-                      <div className="flex gap-3 pt-2">
-                         <Button variant="ghost" className="flex-1" onClick={() => setIsPostulating(null)}>Cancelar</Button>
-                         <Button className="flex-1" onClick={handlePostulate} disabled={!budget.price}>Enviar Propuesta</Button>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase px-1">Mensaje Adicional</label>
+                        <textarea className="input-soft min-h-24" placeholder="Cuéntale al cliente por qué eres el indicado..." value={budget.message} onChange={e => setBudget({ ...budget, message: e.target.value })} />
                       </div>
-                   </Card>
-                 </motion.div>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <Button variant="ghost" className="flex-1" onClick={() => setIsPostulating(null)}>Cancelar</Button>
+                      <Button className="flex-1" onClick={handlePostulate} disabled={!budget.price}>Enviar Propuesta</Button>
+                    </div>
+                  </Card>
+                </motion.div>
               </div>
             )}
           </>
+        ) : activeTab === 'history' ? (
+          <HistoryTab user={user} role={UserRole.WORKER} />
         ) : (
           // Profile section
           <div className="max-w-2xl mx-auto space-y-8">
@@ -2697,19 +2967,19 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               </div>
             )}
             <Card className="p-8 space-y-6">
-               <div className="space-y-4">
-                  <div className="space-y-1">
-                     <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
-                     <input className="input-soft" value={profileData.name} onChange={e => setProfileData({...profileData, name: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                     <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
-                     <input className="input-soft" value={profileData.nro_celular_trabajador} onChange={e => setProfileData({...profileData, nro_celular_trabajador: e.target.value})} />
-                  </div>
-               </div>
-               <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
-                  {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto"/> : 'Guardar Cambios'}
-               </Button>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
+                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
+                  <input className="input-soft" value={profileData.nro_celular_trabajador} onChange={e => setProfileData({ ...profileData, nro_celular_trabajador: e.target.value })} />
+                </div>
+              </div>
+              <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
+                {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar Cambios'}
+              </Button>
             </Card>
           </div>
         )}
@@ -2718,12 +2988,908 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   );
 };
 
-// --- Main App ---
+// --- Admin Components ---
+
+const AdminLoginModal = ({ isOpen, onClose, onLoginSuccess }: { isOpen: boolean; onClose: () => void; onLoginSuccess: (token: string, user: any) => void }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo: email, contraseña: password })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Error al iniciar sesión');
+      }
+
+      localStorage.setItem('adminToken', data.token);
+      onLoginSuccess(data.token, data.user);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+        <Card className="max-w-md w-full p-10 space-y-6 bg-white shadow-2xl relative">
+          <button onClick={onClose} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="text-center space-y-2">
+            <div className="p-3 bg-primary/10 w-fit rounded-full mx-auto text-primary">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h3 className="text-2xl font-bold text-primary">Ingreso Administración</h3>
+            <p className="text-xs text-slate-400">Acceso exclusivo para administradores de YacaJobs.</p>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-100 text-red-700 rounded-xl text-xs font-bold text-center">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Correo Electrónico</label>
+              <input
+                type="email"
+                className="input-soft"
+                placeholder="Usuario Administrador"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Contraseña</label>
+              <input
+                type="password"
+                className="input-soft"
+                placeholder="Contraseña"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+            </div>
+
+            <Button disabled={loading} className="w-full py-4 text-base font-bold flex justify-center items-center gap-2 mt-4 bg-primary hover:bg-primary/95 text-white">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Ingresar'}
+            </Button>
+          </form>
+        </Card>
+      </motion.div>
+    </div>
+  );
+};
+
+const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; onLogout: () => void }) => {
+  const [activeTab, setActiveTab] = useState<'metrics' | 'users' | 'publications' | 'oficios'>('metrics');
+  const [metrics, setMetrics] = useState<any>({ totalUsers: 0, activeContracts: 0, completedContracts: 0 });
+  const [users, setUsers] = useState<any[]>([]);
+  const [oficios, setOficios] = useState<any[]>([]);
+  const [publications, setPublications] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // States for Oficios CRUD
+  const [editingOficio, setEditingOficio] = useState<any>(null);
+  const [showOficioForm, setShowOficioForm] = useState(false);
+  const [oficioName, setOficioName] = useState('');
+  const [oficioSpecialty, setOficioSpecialty] = useState('');
+
+  // States for Audit Viewers
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedConversation, setSelectedConversation] = useState<any>(null);
+  const [conversationMessages, setConversationMessages] = useState<any[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // Alerts
+  const [alertMsg, setAlertMsg] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
+
+  const loadMetrics = async () => {
+    try {
+      const res = await fetch('/api/admin/metrics', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setMetrics(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setUsers(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadOficios = async () => {
+    try {
+      const res = await fetch('/api/admin/oficios', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setOficios(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadModerationData = async () => {
+    try {
+      const [pubRes, convRes] = await Promise.all([
+        fetch('/api/admin/publications', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/admin/conversations', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+      if (pubRes.ok) setPublications(await pubRes.json());
+      if (convRes.ok) setConversations(await convRes.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeTab === 'metrics') loadMetrics();
+    if (activeTab === 'users') loadUsers();
+    if (activeTab === 'oficios') loadOficios();
+    if (activeTab === 'publications') loadModerationData();
+  }, [activeTab]);
+
+  const handleToggleSuspension = async (targetUser: any) => {
+    const nextState = !targetUser.suspendido;
+    if (!window.confirm(`¿Estás seguro de que deseas ${nextState ? 'suspender' : 'activar'} a ${targetUser.nombre}?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/users/${targetUser.rol}/${targetUser.id}/suspend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ suspendido: nextState })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setAlertMsg({ text: data.message || 'Estado actualizado', type: 'success' });
+        loadUsers();
+        if (selectedUser && selectedUser.id === targetUser.id && selectedUser.rol === targetUser.rol) {
+          setSelectedUser({ ...selectedUser, suspendido: nextState });
+        }
+      } else {
+        setAlertMsg({ text: data.message || 'Error al actualizar estado', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleCreateOrUpdateOficio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oficioName.trim()) return;
+
+    try {
+      const url = editingOficio ? `/api/admin/oficios/${editingOficio.id_oficio}` : '/api/admin/oficios';
+      const method = editingOficio ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ nombre_oficio: oficioName, especialidad_oficio: oficioSpecialty })
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: `Oficio ${editingOficio ? 'editado' : 'creado'} con éxito`, type: 'success' });
+        setOficioName('');
+        setOficioSpecialty('');
+        setEditingOficio(null);
+        setShowOficioForm(false);
+        loadOficios();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al guardar oficio', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleDeleteOficio = async (id: number) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este oficio? Se eliminarán todas las asociaciones con trabajadores existentes.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/oficios/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: 'Oficio eliminado con éxito', type: 'success' });
+        loadOficios();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al eliminar oficio', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleForceClosePub = async (id: number) => {
+    if (!window.confirm('¿Estás seguro de que deseas forzar el cierre de esta publicación? Su estado pasará a Cancelada.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/publications/${id}/close`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: 'Publicación cerrada forzosamente', type: 'success' });
+        loadModerationData();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al cerrar publicación', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleInterveneContract = async (contractId: number, nextStatus: string) => {
+    if (!window.confirm(`¿Estás seguro de que deseas forzar el estado de este contrato a ${nextStatus}?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/contracts/${contractId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ estado_contratacion: nextStatus })
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: 'Contrato intervenido exitosamente', type: 'success' });
+        loadModerationData();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al intervenir contrato', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleViewChatHistory = async (conv: any) => {
+    setSelectedConversation(conv);
+    setConversationMessages([]);
+    setLoadingMessages(true);
+
+    try {
+      const res = await fetch(`/api/admin/conversations/${conv.id_conversacion}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setConversationMessages(await res.json());
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  return (
+    <div className="h-screen bg-[#F0F4F1] flex font-sans overflow-hidden">
+      {/* Sidebar Layout */}
+      <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-8">
+        <div className="flex items-center justify-between">
+          <Logo variant={2} />
+        </div>
+
+        {/* Nav Items */}
+        <nav className="flex-1 space-y-1">
+          <button
+            onClick={() => { setActiveTab('metrics'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'metrics' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <BarChart2 className="w-4 h-4" />
+            <span>Métricas</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('users'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'users' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Usuarios y Auditoría</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('publications'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'publications' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Foro y Disputas</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('oficios'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'oficios' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <Briefcase className="w-4 h-4" />
+            <span>Gestión de Oficios</span>
+          </button>
+        </nav>
+
+        {/* Footer actions */}
+        <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">A</div>
+            <div className="truncate text-xs font-bold">Administrador</div>
+          </div>
+          <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
+        </div>
+      </aside>
+
+      {/* Content Layout */}
+      <main className="flex-1 p-10 overflow-y-auto space-y-6">
+        {alertMsg.text && (
+          <div className={`p-4 rounded-2xl text-sm font-bold text-center flex items-center justify-between shadow-sm ${alertMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+            <span>{alertMsg.text}</span>
+            <button onClick={() => setAlertMsg({ text: '', type: null })} className="p-1 hover:bg-black/5 rounded-full"><X className="w-4 h-4" /></button>
+          </div>
+        )}
+
+        {/* Tab content renders here */}
+        {activeTab === 'metrics' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-black text-slate-800">Panel de Métricas</h1>
+              <p className="text-slate-500 text-sm">Estado y salud global de la plataforma YacaJobs.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="flex items-center gap-6 p-8 bg-gradient-to-br from-green-50 to-white">
+                <div className="p-4 bg-green-500/10 text-green-700 rounded-3xl">
+                  <Users className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xs uppercase font-bold text-slate-400 tracking-wider">Usuarios Registrados</h3>
+                  <p className="text-4xl font-black text-slate-800 mt-1">{metrics.totalUsers}</p>
+                </div>
+              </Card>
+
+              <Card className="flex items-center gap-6 p-8 bg-gradient-to-br from-indigo-50 to-white">
+                <div className="p-4 bg-indigo-500/10 text-indigo-700 rounded-3xl">
+                  <Clock3 className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xs uppercase font-bold text-slate-400 tracking-wider">Contratos en Curso</h3>
+                  <p className="text-4xl font-black text-slate-800 mt-1">{metrics.activeContracts}</p>
+                </div>
+              </Card>
+
+              <Card className="flex items-center gap-6 p-8 bg-gradient-to-br from-primary-soft to-white">
+                <div className="p-4 bg-primary/10 text-primary rounded-3xl">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xs uppercase font-bold text-slate-400 tracking-wider">Contratos Finalizados</h3>
+                  <p className="text-4xl font-black text-slate-800 mt-1">{metrics.completedContracts}</p>
+                </div>
+              </Card>
+            </div>
+
+            <Card className="p-8">
+              <h3 className="text-lg font-bold text-slate-800 mb-4">Información de Sistema</h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                YacaJobs está operando normalmente. La sincronización en tiempo real con Supabase está activa para las notificaciones y auditorías de mensajes.
+              </p>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'users' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-black text-slate-800">Auditoría de Usuarios</h1>
+                <p className="text-slate-500 text-sm">Lista de clientes y trabajadores con revisión de documentación y suspensión de accesos.</p>
+              </div>
+            </div>
+
+            <div className="flex gap-6 items-start">
+              {/* Users Table */}
+              <div className="flex-1">
+                <Card className="p-6 overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                        <th className="py-3 px-4">Usuario</th>
+                        <th className="py-3 px-4">Correo</th>
+                        <th className="py-3 px-4">Rol</th>
+                        <th className="py-3 px-4">Celular</th>
+                        <th className="py-3 px-4">Estado</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {users.map(u => (
+                        <tr key={`${u.rol}-${u.id}`} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-4 px-4 font-bold text-slate-800">{u.nombre}</td>
+                          <td className="py-4 px-4 text-slate-500">{u.correo}</td>
+                          <td className="py-4 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-widest ${u.rol === 'WORKER' ? 'bg-indigo-50 text-indigo-700' : 'bg-green-50 text-green-700'}`}>
+                              {u.rol === 'WORKER' ? 'TRABAJADOR' : 'CLIENTE'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 text-slate-500">{u.celular}</td>
+                          <td className="py-4 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-widest ${u.suspendido ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                              {u.suspendido ? 'SUSPENDIDO' : 'ACTIVO'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => setSelectedUser(u)}
+                              className="text-xs font-bold text-primary hover:underline"
+                            >
+                              Ver Docs
+                            </button>
+                            <button
+                              onClick={() => handleToggleSuspension(u)}
+                              className={`text-xs font-bold ${u.suspendido ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'}`}
+                            >
+                              {u.suspendido ? 'Activar' : 'Suspender'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              </div>
+
+              {/* Side Documentation Detail Panel */}
+              {selectedUser && (
+                <div className="w-96">
+                  <motion.div initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
+                    <Card className="p-6 space-y-6 relative bg-white border border-black/5 shadow-lg">
+                      <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 p-1.5 hover:bg-slate-100 rounded-full text-slate-400">
+                        <X className="w-4 h-4" />
+                      </button>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">{selectedUser.rol === 'WORKER' ? 'Trabajador' : 'Cliente'}</span>
+                        <h3 className="text-xl font-bold text-slate-800">{selectedUser.nombre}</h3>
+                        <p className="text-xs text-slate-400">{selectedUser.correo}</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 space-y-4">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Documentos Cargados</h4>
+
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">DNI Frente</p>
+                            {selectedUser.url_dni_frente ? (
+                              <a href={selectedUser.url_dni_frente} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
+                                <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Frente)
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">No disponible</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">DNI Dorso</p>
+                            {selectedUser.url_dni_dorso ? (
+                              <a href={selectedUser.url_dni_dorso} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
+                                <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Reverso)
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">No disponible</span>
+                            )}
+                          </div>
+
+                          {selectedUser.rol === 'WORKER' && (
+                            <>
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Antecedentes Penales</p>
+                                {selectedUser.certificado_buena_conducta ? (
+                                  <a href={selectedUser.certificado_buena_conducta} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
+                                    <FileText className="w-3.5 h-3.5" /> Certificado de Buena Conducta
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-red-500/80 font-bold">Sin Certificado</span>
+                                )}
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Monotributo</p>
+                                <span className="text-xs text-slate-700 block mt-1">{selectedUser.monotributo ? 'Registrado / Sí' : 'No registrado'}</span>
+                              </div>
+
+                              {selectedUser.matricula && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Matrícula Profesional</p>
+                                  <span className="text-xs text-slate-700 block mt-1">{selectedUser.matricula}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 flex gap-2">
+                        <button
+                          onClick={() => handleToggleSuspension(selectedUser)}
+                          className={`flex-1 py-3 text-xs font-bold text-white rounded-xl transition-all active:scale-95 ${selectedUser.suspendido ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                        >
+                          {selectedUser.suspendido ? 'Activar Usuario' : 'Suspender Usuario'}
+                        </button>
+                      </div>
+                    </Card>
+                  </motion.div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'publications' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-black text-slate-800">Moderación de Foro y Disputas</h1>
+              <p className="text-slate-500 text-sm">Gestiona publicaciones abiertas en la comunidad o interviene contratos de trabajo y audita historiales de chat.</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: Publications & Conversations list */}
+              <div className="lg:col-span-7 space-y-6">
+                {/* Section A: Publicaciones */}
+                <Card className="p-6 space-y-4">
+                  <h3 className="text-lg font-black text-slate-800 border-b pb-2">Publicaciones del Foro</h3>
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="text-slate-400 uppercase font-bold border-b border-slate-100 pb-2">
+                          <th className="py-2">Cliente</th>
+                          <th className="py-2">Rubro</th>
+                          <th className="py-2">Descripción</th>
+                          <th className="py-2">Estado</th>
+                          <th className="py-2 text-right">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {publications.map(p => (
+                          <tr key={p.id_publi} className="hover:bg-slate-50/50">
+                            <td className="py-3 font-bold text-slate-700">{p.clientes?.nombre_y_apellido_cliente}</td>
+                            <td className="py-3 text-slate-500">{p.oficios?.nombre_oficio}</td>
+                            <td className="py-3 text-slate-400 truncate max-w-44">{p.descripcion_publi}</td>
+                            <td className="py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${p.estado_publi === 'Abierta' ? 'bg-green-100 text-green-700' : p.estado_publi === 'En curso' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {p.estado_publi}
+                              </span>
+                            </td>
+                            <td className="py-3 text-right">
+                              {p.estado_publi !== 'Cancelada' && p.estado_publi !== 'Concretada' && (
+                                <button
+                                  onClick={() => handleForceClosePub(p.id_publi)}
+                                  className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[10px] font-bold"
+                                >
+                                  Cerrar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Section B: Conversaciones / Contratos */}
+                <Card className="p-6 space-y-4">
+                  <h3 className="text-lg font-black text-slate-800 border-b pb-2">Conversaciones y Contratos</h3>
+                  <div className="max-h-80 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="text-slate-400 uppercase font-bold border-b border-slate-100 pb-2">
+                          <th className="py-2">Participantes</th>
+                          <th className="py-2">Estado Contrato</th>
+                          <th className="py-2 text-right">Auditoría / Intervención</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {conversations.map(c => {
+                          const contract = c.contrataciones?.[0] || c.contrataciones;
+                          return (
+                            <tr key={c.id_conversacion} className="hover:bg-slate-50/50">
+                              <td className="py-3">
+                                <div className="font-bold text-slate-700">{c.clientes?.nombre_y_apellido_cliente}</div>
+                                <div className="text-slate-400 font-medium text-[10px]">& {c.trabajadores?.nombre_y_apellido_trabajador}</div>
+                              </td>
+                              <td className="py-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${contract?.estado_contratacion === 'Confirmada' ? 'bg-green-100 text-green-700' : contract?.estado_contratacion === 'Finalizada' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                                  {contract?.estado_contratacion || 'Sin contrato'}
+                                </span>
+                              </td>
+                              <td className="py-3 text-right space-x-2">
+                                <button
+                                  onClick={() => handleViewChatHistory(c)}
+                                  className="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[10px] font-bold"
+                                >
+                                  Ver Chat
+                                </button>
+                                {contract && contract.estado_contratacion !== 'Cancelada' && contract.estado_contratacion !== 'Finalizada' && (
+                                  <span className="inline-flex gap-1">
+                                    <button
+                                      onClick={() => handleInterveneContract(contract.id_contratacion, 'Finalizada')}
+                                      className="px-1.5 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded text-[9px] font-semibold"
+                                      title="Forzar Finalizado"
+                                    >
+                                      Finalizar
+                                    </button>
+                                    <button
+                                      onClick={() => handleInterveneContract(contract.id_contratacion, 'Cancelada')}
+                                      className="px-1.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded text-[9px] font-semibold"
+                                      title="Forzar Cancelado"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Right Column: Chat History Auditor */}
+              <div className="lg:col-span-5">
+                {selectedConversation ? (
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                    <Card className="p-6 space-y-4 bg-white flex flex-col h-[520px]">
+                      <div className="flex justify-between items-start border-b pb-3">
+                        <div>
+                          <span className="text-[9px] font-black uppercase text-red-500 tracking-wider">Historial de Chat (Solo Lectura)</span>
+                          <h4 className="font-bold text-slate-800 text-sm">Disputa #{selectedConversation.id_conversacion}</h4>
+                          <p className="text-[10px] text-slate-400 leading-tight">
+                            Cliente: {selectedConversation.clientes?.nombre_y_apellido_cliente} <br />
+                            Trabajador: {selectedConversation.trabajadores?.nombre_y_apellido_trabajador}
+                          </p>
+                        </div>
+                        <button onClick={() => setSelectedConversation(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Chat messages viewport */}
+                      <div className="flex-1 overflow-y-auto p-4 bg-slate-50 rounded-2xl space-y-3 min-h-0 text-xs">
+                        {loadingMessages ? (
+                          <div className="py-20 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>
+                        ) : conversationMessages.length === 0 ? (
+                          <div className="py-20 text-center text-slate-400 italic">No hay mensajes en esta conversación.</div>
+                        ) : (
+                          conversationMessages.map(m => {
+                            const isClient = m.id_emisor_cliente !== null;
+                            const name = isClient
+                              ? selectedConversation.clientes?.nombre_y_apellido_cliente
+                              : selectedConversation.trabajadores?.nombre_y_apellido_trabajador;
+
+                            return (
+                              <div key={m.id_mensaje} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
+                                <div className="text-[8px] text-slate-400 font-bold px-2 mb-0.5">{name}</div>
+                                <div className={`p-3 max-w-[85%] rounded-2xl ${isClient ? 'bg-white border text-slate-800' : 'bg-primary text-white'}`}>
+                                  {m.contenido_mensaje}
+                                </div>
+                                <div className="text-[7px] text-slate-300 font-bold px-2 mt-0.5">{new Date(m.fecha_mensaje).toLocaleString()}</div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </Card>
+                  </motion.div>
+                ) : (
+                  <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-200 rounded-[32px] p-10 text-center text-slate-400">
+                    <div>
+                      <ShieldAlert className="w-10 h-10 mx-auto text-slate-300 mb-3" />
+                      <p className="text-sm font-semibold">Selecciona una conversación para auditar los mensajes y resolver disputas.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'oficios' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-black text-slate-800">Gestión de Oficios</h1>
+                <p className="text-slate-500 text-sm">Crear, editar o eliminar categorías y rubros laborales disponibles en YacaJobs.</p>
+              </div>
+
+              <button
+                onClick={() => { setShowOficioForm(true); setEditingOficio(null); setOficioName(''); setOficioSpecialty(''); }}
+                className="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-2xl font-bold text-xs flex items-center gap-2 transition-all active:scale-95 shadow-sm cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Nuevo Oficio
+              </button>
+            </div>
+
+            <div className="flex gap-6 items-start">
+              {/* Oficios List Table */}
+              <div className="flex-1">
+                <Card className="p-6">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="text-slate-400 uppercase font-bold border-b text-[10px] tracking-wider">
+                        <th className="py-3 px-4">ID</th>
+                        <th className="py-3 px-4">Nombre del Rubro</th>
+                        <th className="py-3 px-4">Especialidad Sugerida</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {oficios.map(o => (
+                        <tr key={o.id_oficio} className="hover:bg-slate-50/50">
+                          <td className="py-4 px-4 text-slate-400 font-bold">{o.id_oficio}</td>
+                          <td className="py-4 px-4 font-bold text-slate-800">{o.nombre_oficio}</td>
+                          <td className="py-4 px-4 text-slate-500">{o.especialidad_oficio || '-'}</td>
+                          <td className="py-4 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingOficio(o);
+                                setOficioName(o.nombre_oficio);
+                                setOficioSpecialty(o.especialidad_oficio || '');
+                                setShowOficioForm(true);
+                              }}
+                              className="text-primary font-bold text-xs hover:underline flex-inline items-center gap-1"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteOficio(o.id_oficio)}
+                              className="text-red-600 font-bold text-xs hover:underline flex-inline items-center gap-1"
+                            >
+                              Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              </div>
+
+              {/* Oficios Creator Form Side Block */}
+              {showOficioForm && (
+                <div className="w-80">
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                    <Card className="p-6 space-y-4 bg-white border border-black/5 shadow-lg relative">
+                      <button
+                        onClick={() => { setShowOficioForm(false); setEditingOficio(null); }}
+                        className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-full text-slate-400"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+
+                      <h3 className="text-base font-bold text-slate-800 border-b pb-2">
+                        {editingOficio ? 'Editar Rubro' : 'Nuevo Rubro de Oficio'}
+                      </h3>
+
+                      <form onSubmit={handleCreateOrUpdateOficio} className="space-y-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Nombre</label>
+                          <input
+                            type="text"
+                            className="input-soft py-3 text-xs"
+                            placeholder="Ej: Electricista"
+                            required
+                            value={oficioName}
+                            onChange={e => setOficioName(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Especialidad (Opcional)</label>
+                          <input
+                            type="text"
+                            className="input-soft py-3 text-xs"
+                            placeholder="Ej: Alta Tensión, Redes"
+                            value={oficioSpecialty}
+                            onChange={e => setOficioSpecialty(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => { setShowOficioForm(false); setEditingOficio(null); }}
+                            className="flex-1 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="flex-1 py-2 bg-primary hover:bg-primary/95 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+                          >
+                            Guardar
+                          </button>
+                        </div>
+                      </form>
+                    </Card>
+                  </motion.div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'auth' | 'dashboard'>('landing');
+  const [view, setView] = useState<'landing' | 'auth' | 'dashboard' | 'admin-dashboard'>('landing');
   const [initialIsLogin, setInitialIsLogin] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [adminToken, setAdminToken] = useState<string | null>(localStorage.getItem('adminToken'));
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+
+  React.useEffect(() => {
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      setAdminToken(token);
+      setUser({ role: 'ADMIN', name: 'Administrador' });
+      setView('admin-dashboard');
+    }
+  }, []);
 
   const handleStart = (role: UserRole | null, isLogin: boolean = false) => {
     setInitialIsLogin(isLogin);
@@ -2737,6 +3903,8 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    setAdminToken(null);
+    localStorage.removeItem('adminToken');
     setView('landing');
   };
 
@@ -2749,16 +3917,16 @@ export default function App() {
       <AnimatePresence mode="wait">
         {view === 'landing' && (
           <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <LandingPage onStart={handleStart} />
+            <LandingPage onStart={handleStart} onAdminClick={() => setShowAdminLogin(true)} />
           </motion.div>
         )}
-        
+
         {view === 'auth' && (
           <motion.div key="auth" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }}>
-            <AuthForm 
-              initialIsLogin={initialIsLogin} 
-              onAuth={handleAuth} 
-              onBackToLanding={handleBackToLanding} 
+            <AuthForm
+              initialIsLogin={initialIsLogin}
+              onAuth={handleAuth}
+              onBackToLanding={handleBackToLanding}
             />
           </motion.div>
         )}
@@ -2772,7 +3940,23 @@ export default function App() {
             )}
           </motion.div>
         )}
+
+        {view === 'admin-dashboard' && adminToken && (
+          <motion.div key="admin-db" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <AdminDashboard user={user} token={adminToken} onLogout={handleLogout} />
+          </motion.div>
+        )}
       </AnimatePresence>
+
+      <AdminLoginModal
+        isOpen={showAdminLogin}
+        onClose={() => setShowAdminLogin(false)}
+        onLoginSuccess={(token, adminUser) => {
+          setAdminToken(token);
+          setUser(adminUser);
+          setView('admin-dashboard');
+        }}
+      />
     </div>
   );
 }
