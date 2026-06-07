@@ -2132,7 +2132,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen bg-slate-50 flex overflow-hidden">
       <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <Logo variant={2} />
@@ -2809,7 +2809,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen bg-slate-50 flex overflow-hidden">
       <aside className="w-64 bg-white border-r p-6 flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <Logo variant={2} />
@@ -3315,7 +3315,7 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F4F1] flex font-sans">
+    <div className="h-screen bg-[#F0F4F1] flex font-sans overflow-hidden">
       {/* Sidebar Layout */}
       <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-8">
         <div className="flex items-center justify-between">
