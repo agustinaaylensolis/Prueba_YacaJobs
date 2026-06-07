@@ -3,6 +3,7 @@ import { SupabaseService } from '../supabase/supabase.service.js';
 import { RegisterClientDto } from './dto/register-client.dto.js';
 import { RegisterWorkerDto } from './dto/register-worker.dto.js';
 import * as bcrypt from 'bcryptjs';
+import { signToken } from './token.helper.js';
 
 @Injectable()
 export class AuthService {
@@ -129,6 +130,10 @@ export class AuthService {
       throw new UnauthorizedException('El correo no está registrado');
     }
 
+    if (data.suspendido === true) {
+      throw new UnauthorizedException('Su cuenta ha sido suspendida. Comuníquese con soporte.');
+    }
+
     // Explicitly check for password using property accessor if 'ñ' is a concern
     const storedHashedPassword = data[passField];
     
@@ -151,6 +156,45 @@ export class AuthService {
         ...data,
         role,
       },
+    };
+  }
+
+  async adminLogin(email: string, pass: string) {
+    const { data, error } = await this.client
+      .from('administradores')
+      .select('*')
+      .eq('correo', email)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error searching admin:', error);
+      throw new BadRequestException('Error al buscar administrador');
+    }
+
+    if (!data) {
+      throw new UnauthorizedException('El correo no está registrado como administrador');
+    }
+
+    const isMatch = await bcrypt.compare(pass, data.contraseña);
+    if (!isMatch) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    const token = signToken({
+      id: data.id_admin,
+      correo: data.correo,
+      role: 'ADMIN'
+    });
+
+    return {
+      message: 'Login exitoso',
+      token,
+      user: {
+        id: data.id_admin,
+        correo: data.correo,
+        role: 'ADMIN',
+        name: 'Administrador'
+      }
     };
   }
 

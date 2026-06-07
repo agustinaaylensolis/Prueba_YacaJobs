@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3, Circle, Lock } from 'lucide-react';
+import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3, Circle, Lock, Users, BarChart2, Trash2, Edit, Plus, ShieldAlert } from 'lucide-react';
 import RatingStars from './components/RatingStars';
 import { getWorkerRatings, createWorkerRating } from './lib/ratings';
 import { Rating } from './types';
@@ -1318,7 +1318,7 @@ const ConversationModal = ({
 
 // --- Views ---
 
-const LandingPage = ({ onStart }: { onStart: (role: UserRole | null, isLogin: boolean) => void }) => (
+const LandingPage = ({ onStart, onAdminClick }: { onStart: (role: UserRole | null, isLogin: boolean) => void; onAdminClick: () => void }) => (
   <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-base/10">
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -1372,7 +1372,7 @@ const LandingPage = ({ onStart }: { onStart: (role: UserRole | null, isLogin: bo
         <p><span className="hover:text-primary transition-colors cursor-pointer">Términos y condiciones</span> • YacaJobs derechos reservados 2026 • Consultas: <a href="mailto:yacajobs@gmail.com" className="hover:text-primary transition-colors">yacajobs@gmail.com</a> </p>
         <div className="flex justify-center">
           <button
-            onClick={() => onStart(null, true)}
+            onClick={onAdminClick}
             className="text-slate-400/30 hover:text-slate-400/70 transition-all duration-300 p-1 cursor-pointer"
             title="Acceso Administración"
           >
@@ -2988,12 +2988,908 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   );
 };
 
-// --- Main App ---
+// --- Admin Components ---
+
+const AdminLoginModal = ({ isOpen, onClose, onLoginSuccess }: { isOpen: boolean; onClose: () => void; onLoginSuccess: (token: string, user: any) => void }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo: email, contraseña: password })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Error al iniciar sesión');
+      }
+
+      localStorage.setItem('adminToken', data.token);
+      onLoginSuccess(data.token, data.user);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+        <Card className="max-w-md w-full p-10 space-y-6 bg-white shadow-2xl relative">
+          <button onClick={onClose} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="text-center space-y-2">
+            <div className="p-3 bg-primary/10 w-fit rounded-full mx-auto text-primary">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h3 className="text-2xl font-bold text-primary">Ingreso Administración</h3>
+            <p className="text-xs text-slate-400">Acceso exclusivo para administradores de YacaJobs.</p>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-100 text-red-700 rounded-xl text-xs font-bold text-center">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Correo Electrónico</label>
+              <input
+                type="email"
+                className="input-soft"
+                placeholder="Usuario Administrador"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Contraseña</label>
+              <input
+                type="password"
+                className="input-soft"
+                placeholder="Contraseña"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+            </div>
+
+            <Button disabled={loading} className="w-full py-4 text-base font-bold flex justify-center items-center gap-2 mt-4 bg-primary hover:bg-primary/95 text-white">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Ingresar'}
+            </Button>
+          </form>
+        </Card>
+      </motion.div>
+    </div>
+  );
+};
+
+const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; onLogout: () => void }) => {
+  const [activeTab, setActiveTab] = useState<'metrics' | 'users' | 'publications' | 'oficios'>('metrics');
+  const [metrics, setMetrics] = useState<any>({ totalUsers: 0, activeContracts: 0, completedContracts: 0 });
+  const [users, setUsers] = useState<any[]>([]);
+  const [oficios, setOficios] = useState<any[]>([]);
+  const [publications, setPublications] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // States for Oficios CRUD
+  const [editingOficio, setEditingOficio] = useState<any>(null);
+  const [showOficioForm, setShowOficioForm] = useState(false);
+  const [oficioName, setOficioName] = useState('');
+  const [oficioSpecialty, setOficioSpecialty] = useState('');
+
+  // States for Audit Viewers
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedConversation, setSelectedConversation] = useState<any>(null);
+  const [conversationMessages, setConversationMessages] = useState<any[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // Alerts
+  const [alertMsg, setAlertMsg] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
+
+  const loadMetrics = async () => {
+    try {
+      const res = await fetch('/api/admin/metrics', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setMetrics(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setUsers(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadOficios = async () => {
+    try {
+      const res = await fetch('/api/admin/oficios', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setOficios(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadModerationData = async () => {
+    try {
+      const [pubRes, convRes] = await Promise.all([
+        fetch('/api/admin/publications', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/admin/conversations', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+      if (pubRes.ok) setPublications(await pubRes.json());
+      if (convRes.ok) setConversations(await convRes.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeTab === 'metrics') loadMetrics();
+    if (activeTab === 'users') loadUsers();
+    if (activeTab === 'oficios') loadOficios();
+    if (activeTab === 'publications') loadModerationData();
+  }, [activeTab]);
+
+  const handleToggleSuspension = async (targetUser: any) => {
+    const nextState = !targetUser.suspendido;
+    if (!window.confirm(`¿Estás seguro de que deseas ${nextState ? 'suspender' : 'activar'} a ${targetUser.nombre}?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/users/${targetUser.rol}/${targetUser.id}/suspend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ suspendido: nextState })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setAlertMsg({ text: data.message || 'Estado actualizado', type: 'success' });
+        loadUsers();
+        if (selectedUser && selectedUser.id === targetUser.id && selectedUser.rol === targetUser.rol) {
+          setSelectedUser({ ...selectedUser, suspendido: nextState });
+        }
+      } else {
+        setAlertMsg({ text: data.message || 'Error al actualizar estado', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleCreateOrUpdateOficio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oficioName.trim()) return;
+
+    try {
+      const url = editingOficio ? `/api/admin/oficios/${editingOficio.id_oficio}` : '/api/admin/oficios';
+      const method = editingOficio ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ nombre_oficio: oficioName, especialidad_oficio: oficioSpecialty })
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: `Oficio ${editingOficio ? 'editado' : 'creado'} con éxito`, type: 'success' });
+        setOficioName('');
+        setOficioSpecialty('');
+        setEditingOficio(null);
+        setShowOficioForm(false);
+        loadOficios();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al guardar oficio', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleDeleteOficio = async (id: number) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar este oficio? Se eliminarán todas las asociaciones con trabajadores existentes.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/oficios/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: 'Oficio eliminado con éxito', type: 'success' });
+        loadOficios();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al eliminar oficio', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleForceClosePub = async (id: number) => {
+    if (!window.confirm('¿Estás seguro de que deseas forzar el cierre de esta publicación? Su estado pasará a Cancelada.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/publications/${id}/close`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: 'Publicación cerrada forzosamente', type: 'success' });
+        loadModerationData();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al cerrar publicación', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleInterveneContract = async (contractId: number, nextStatus: string) => {
+    if (!window.confirm(`¿Estás seguro de que deseas forzar el estado de este contrato a ${nextStatus}?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/contracts/${contractId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ estado_contratacion: nextStatus })
+      });
+
+      if (res.ok) {
+        setAlertMsg({ text: 'Contrato intervenido exitosamente', type: 'success' });
+        loadModerationData();
+      } else {
+        const errData = await res.json();
+        setAlertMsg({ text: errData.message || 'Error al intervenir contrato', type: 'error' });
+      }
+    } catch (err: any) {
+      setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
+    }
+  };
+
+  const handleViewChatHistory = async (conv: any) => {
+    setSelectedConversation(conv);
+    setConversationMessages([]);
+    setLoadingMessages(true);
+
+    try {
+      const res = await fetch(`/api/admin/conversations/${conv.id_conversacion}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setConversationMessages(await res.json());
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F0F4F1] flex font-sans">
+      {/* Sidebar Layout */}
+      <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col gap-8">
+        <div className="flex items-center justify-between">
+          <Logo variant={2} />
+        </div>
+
+        {/* Nav Items */}
+        <nav className="flex-1 space-y-1">
+          <button
+            onClick={() => { setActiveTab('metrics'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'metrics' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <BarChart2 className="w-4 h-4" />
+            <span>Métricas</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('users'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'users' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Usuarios y Auditoría</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('publications'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'publications' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Foro y Disputas</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('oficios'); setAlertMsg({ text: '', type: null }); }}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'oficios' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <Briefcase className="w-4 h-4" />
+            <span>Gestión de Oficios</span>
+          </button>
+        </nav>
+
+        {/* Footer actions */}
+        <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-[10px] text-white font-bold">A</div>
+            <div className="truncate text-xs font-bold">Administrador</div>
+          </div>
+          <button onClick={onLogout} className="text-xs font-bold text-red-400 hover:text-red-600 flex items-center gap-2">
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
+        </div>
+      </aside>
+
+      {/* Content Layout */}
+      <main className="flex-1 p-10 overflow-y-auto space-y-6">
+        {alertMsg.text && (
+          <div className={`p-4 rounded-2xl text-sm font-bold text-center flex items-center justify-between shadow-sm ${alertMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+            <span>{alertMsg.text}</span>
+            <button onClick={() => setAlertMsg({ text: '', type: null })} className="p-1 hover:bg-black/5 rounded-full"><X className="w-4 h-4" /></button>
+          </div>
+        )}
+
+        {/* Tab content renders here */}
+        {activeTab === 'metrics' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-black text-slate-800">Panel de Métricas</h1>
+              <p className="text-slate-500 text-sm">Estado y salud global de la plataforma YacaJobs.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="flex items-center gap-6 p-8 bg-gradient-to-br from-green-50 to-white">
+                <div className="p-4 bg-green-500/10 text-green-700 rounded-3xl">
+                  <Users className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xs uppercase font-bold text-slate-400 tracking-wider">Usuarios Registrados</h3>
+                  <p className="text-4xl font-black text-slate-800 mt-1">{metrics.totalUsers}</p>
+                </div>
+              </Card>
+
+              <Card className="flex items-center gap-6 p-8 bg-gradient-to-br from-indigo-50 to-white">
+                <div className="p-4 bg-indigo-500/10 text-indigo-700 rounded-3xl">
+                  <Clock3 className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xs uppercase font-bold text-slate-400 tracking-wider">Contratos en Curso</h3>
+                  <p className="text-4xl font-black text-slate-800 mt-1">{metrics.activeContracts}</p>
+                </div>
+              </Card>
+
+              <Card className="flex items-center gap-6 p-8 bg-gradient-to-br from-primary-soft to-white">
+                <div className="p-4 bg-primary/10 text-primary rounded-3xl">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-xs uppercase font-bold text-slate-400 tracking-wider">Contratos Finalizados</h3>
+                  <p className="text-4xl font-black text-slate-800 mt-1">{metrics.completedContracts}</p>
+                </div>
+              </Card>
+            </div>
+
+            <Card className="p-8">
+              <h3 className="text-lg font-bold text-slate-800 mb-4">Información de Sistema</h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                YacaJobs está operando normalmente. La sincronización en tiempo real con Supabase está activa para las notificaciones y auditorías de mensajes.
+              </p>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'users' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-black text-slate-800">Auditoría de Usuarios</h1>
+                <p className="text-slate-500 text-sm">Lista de clientes y trabajadores con revisión de documentación y suspensión de accesos.</p>
+              </div>
+            </div>
+
+            <div className="flex gap-6 items-start">
+              {/* Users Table */}
+              <div className="flex-1">
+                <Card className="p-6 overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                        <th className="py-3 px-4">Usuario</th>
+                        <th className="py-3 px-4">Correo</th>
+                        <th className="py-3 px-4">Rol</th>
+                        <th className="py-3 px-4">Celular</th>
+                        <th className="py-3 px-4">Estado</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {users.map(u => (
+                        <tr key={`${u.rol}-${u.id}`} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-4 px-4 font-bold text-slate-800">{u.nombre}</td>
+                          <td className="py-4 px-4 text-slate-500">{u.correo}</td>
+                          <td className="py-4 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-widest ${u.rol === 'WORKER' ? 'bg-indigo-50 text-indigo-700' : 'bg-green-50 text-green-700'}`}>
+                              {u.rol === 'WORKER' ? 'TRABAJADOR' : 'CLIENTE'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 text-slate-500">{u.celular}</td>
+                          <td className="py-4 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-widest ${u.suspendido ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                              {u.suspendido ? 'SUSPENDIDO' : 'ACTIVO'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => setSelectedUser(u)}
+                              className="text-xs font-bold text-primary hover:underline"
+                            >
+                              Ver Docs
+                            </button>
+                            <button
+                              onClick={() => handleToggleSuspension(u)}
+                              className={`text-xs font-bold ${u.suspendido ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'}`}
+                            >
+                              {u.suspendido ? 'Activar' : 'Suspender'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              </div>
+
+              {/* Side Documentation Detail Panel */}
+              {selectedUser && (
+                <div className="w-96">
+                  <motion.div initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
+                    <Card className="p-6 space-y-6 relative bg-white border border-black/5 shadow-lg">
+                      <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 p-1.5 hover:bg-slate-100 rounded-full text-slate-400">
+                        <X className="w-4 h-4" />
+                      </button>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">{selectedUser.rol === 'WORKER' ? 'Trabajador' : 'Cliente'}</span>
+                        <h3 className="text-xl font-bold text-slate-800">{selectedUser.nombre}</h3>
+                        <p className="text-xs text-slate-400">{selectedUser.correo}</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 space-y-4">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Documentos Cargados</h4>
+
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">DNI Frente</p>
+                            {selectedUser.url_dni_frente ? (
+                              <a href={selectedUser.url_dni_frente} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
+                                <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Frente)
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">No disponible</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">DNI Dorso</p>
+                            {selectedUser.url_dni_dorso ? (
+                              <a href={selectedUser.url_dni_dorso} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
+                                <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Reverso)
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">No disponible</span>
+                            )}
+                          </div>
+
+                          {selectedUser.rol === 'WORKER' && (
+                            <>
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Antecedentes Penales</p>
+                                {selectedUser.certificado_buena_conducta ? (
+                                  <a href={selectedUser.certificado_buena_conducta} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
+                                    <FileText className="w-3.5 h-3.5" /> Certificado de Buena Conducta
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-red-500/80 font-bold">Sin Certificado</span>
+                                )}
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Monotributo</p>
+                                <span className="text-xs text-slate-700 block mt-1">{selectedUser.monotributo ? 'Registrado / Sí' : 'No registrado'}</span>
+                              </div>
+
+                              {selectedUser.matricula && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Matrícula Profesional</p>
+                                  <span className="text-xs text-slate-700 block mt-1">{selectedUser.matricula}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 flex gap-2">
+                        <button
+                          onClick={() => handleToggleSuspension(selectedUser)}
+                          className={`flex-1 py-3 text-xs font-bold text-white rounded-xl transition-all active:scale-95 ${selectedUser.suspendido ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                        >
+                          {selectedUser.suspendido ? 'Activar Usuario' : 'Suspender Usuario'}
+                        </button>
+                      </div>
+                    </Card>
+                  </motion.div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'publications' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-black text-slate-800">Moderación de Foro y Disputas</h1>
+              <p className="text-slate-500 text-sm">Gestiona publicaciones abiertas en la comunidad o interviene contratos de trabajo y audita historiales de chat.</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: Publications & Conversations list */}
+              <div className="lg:col-span-7 space-y-6">
+                {/* Section A: Publicaciones */}
+                <Card className="p-6 space-y-4">
+                  <h3 className="text-lg font-black text-slate-800 border-b pb-2">Publicaciones del Foro</h3>
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="text-slate-400 uppercase font-bold border-b border-slate-100 pb-2">
+                          <th className="py-2">Cliente</th>
+                          <th className="py-2">Rubro</th>
+                          <th className="py-2">Descripción</th>
+                          <th className="py-2">Estado</th>
+                          <th className="py-2 text-right">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {publications.map(p => (
+                          <tr key={p.id_publi} className="hover:bg-slate-50/50">
+                            <td className="py-3 font-bold text-slate-700">{p.clientes?.nombre_y_apellido_cliente}</td>
+                            <td className="py-3 text-slate-500">{p.oficios?.nombre_oficio}</td>
+                            <td className="py-3 text-slate-400 truncate max-w-44">{p.descripcion_publi}</td>
+                            <td className="py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${p.estado_publi === 'Abierta' ? 'bg-green-100 text-green-700' : p.estado_publi === 'En curso' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {p.estado_publi}
+                              </span>
+                            </td>
+                            <td className="py-3 text-right">
+                              {p.estado_publi !== 'Cancelada' && p.estado_publi !== 'Concretada' && (
+                                <button
+                                  onClick={() => handleForceClosePub(p.id_publi)}
+                                  className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[10px] font-bold"
+                                >
+                                  Cerrar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Section B: Conversaciones / Contratos */}
+                <Card className="p-6 space-y-4">
+                  <h3 className="text-lg font-black text-slate-800 border-b pb-2">Conversaciones y Contratos</h3>
+                  <div className="max-h-80 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="text-slate-400 uppercase font-bold border-b border-slate-100 pb-2">
+                          <th className="py-2">Participantes</th>
+                          <th className="py-2">Estado Contrato</th>
+                          <th className="py-2 text-right">Auditoría / Intervención</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {conversations.map(c => {
+                          const contract = c.contrataciones?.[0] || c.contrataciones;
+                          return (
+                            <tr key={c.id_conversacion} className="hover:bg-slate-50/50">
+                              <td className="py-3">
+                                <div className="font-bold text-slate-700">{c.clientes?.nombre_y_apellido_cliente}</div>
+                                <div className="text-slate-400 font-medium text-[10px]">& {c.trabajadores?.nombre_y_apellido_trabajador}</div>
+                              </td>
+                              <td className="py-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${contract?.estado_contratacion === 'Confirmada' ? 'bg-green-100 text-green-700' : contract?.estado_contratacion === 'Finalizada' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                                  {contract?.estado_contratacion || 'Sin contrato'}
+                                </span>
+                              </td>
+                              <td className="py-3 text-right space-x-2">
+                                <button
+                                  onClick={() => handleViewChatHistory(c)}
+                                  className="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[10px] font-bold"
+                                >
+                                  Ver Chat
+                                </button>
+                                {contract && contract.estado_contratacion !== 'Cancelada' && contract.estado_contratacion !== 'Finalizada' && (
+                                  <span className="inline-flex gap-1">
+                                    <button
+                                      onClick={() => handleInterveneContract(contract.id_contratacion, 'Finalizada')}
+                                      className="px-1.5 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded text-[9px] font-semibold"
+                                      title="Forzar Finalizado"
+                                    >
+                                      Finalizar
+                                    </button>
+                                    <button
+                                      onClick={() => handleInterveneContract(contract.id_contratacion, 'Cancelada')}
+                                      className="px-1.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded text-[9px] font-semibold"
+                                      title="Forzar Cancelado"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Right Column: Chat History Auditor */}
+              <div className="lg:col-span-5">
+                {selectedConversation ? (
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                    <Card className="p-6 space-y-4 bg-white flex flex-col h-[520px]">
+                      <div className="flex justify-between items-start border-b pb-3">
+                        <div>
+                          <span className="text-[9px] font-black uppercase text-red-500 tracking-wider">Historial de Chat (Solo Lectura)</span>
+                          <h4 className="font-bold text-slate-800 text-sm">Disputa #{selectedConversation.id_conversacion}</h4>
+                          <p className="text-[10px] text-slate-400 leading-tight">
+                            Cliente: {selectedConversation.clientes?.nombre_y_apellido_cliente} <br />
+                            Trabajador: {selectedConversation.trabajadores?.nombre_y_apellido_trabajador}
+                          </p>
+                        </div>
+                        <button onClick={() => setSelectedConversation(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Chat messages viewport */}
+                      <div className="flex-1 overflow-y-auto p-4 bg-slate-50 rounded-2xl space-y-3 min-h-0 text-xs">
+                        {loadingMessages ? (
+                          <div className="py-20 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>
+                        ) : conversationMessages.length === 0 ? (
+                          <div className="py-20 text-center text-slate-400 italic">No hay mensajes en esta conversación.</div>
+                        ) : (
+                          conversationMessages.map(m => {
+                            const isClient = m.id_emisor_cliente !== null;
+                            const name = isClient
+                              ? selectedConversation.clientes?.nombre_y_apellido_cliente
+                              : selectedConversation.trabajadores?.nombre_y_apellido_trabajador;
+
+                            return (
+                              <div key={m.id_mensaje} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
+                                <div className="text-[8px] text-slate-400 font-bold px-2 mb-0.5">{name}</div>
+                                <div className={`p-3 max-w-[85%] rounded-2xl ${isClient ? 'bg-white border text-slate-800' : 'bg-primary text-white'}`}>
+                                  {m.contenido_mensaje}
+                                </div>
+                                <div className="text-[7px] text-slate-300 font-bold px-2 mt-0.5">{new Date(m.fecha_mensaje).toLocaleString()}</div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </Card>
+                  </motion.div>
+                ) : (
+                  <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-200 rounded-[32px] p-10 text-center text-slate-400">
+                    <div>
+                      <ShieldAlert className="w-10 h-10 mx-auto text-slate-300 mb-3" />
+                      <p className="text-sm font-semibold">Selecciona una conversación para auditar los mensajes y resolver disputas.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'oficios' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-black text-slate-800">Gestión de Oficios</h1>
+                <p className="text-slate-500 text-sm">Crear, editar o eliminar categorías y rubros laborales disponibles en YacaJobs.</p>
+              </div>
+
+              <button
+                onClick={() => { setShowOficioForm(true); setEditingOficio(null); setOficioName(''); setOficioSpecialty(''); }}
+                className="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-2xl font-bold text-xs flex items-center gap-2 transition-all active:scale-95 shadow-sm cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Nuevo Oficio
+              </button>
+            </div>
+
+            <div className="flex gap-6 items-start">
+              {/* Oficios List Table */}
+              <div className="flex-1">
+                <Card className="p-6">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="text-slate-400 uppercase font-bold border-b text-[10px] tracking-wider">
+                        <th className="py-3 px-4">ID</th>
+                        <th className="py-3 px-4">Nombre del Rubro</th>
+                        <th className="py-3 px-4">Especialidad Sugerida</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {oficios.map(o => (
+                        <tr key={o.id_oficio} className="hover:bg-slate-50/50">
+                          <td className="py-4 px-4 text-slate-400 font-bold">{o.id_oficio}</td>
+                          <td className="py-4 px-4 font-bold text-slate-800">{o.nombre_oficio}</td>
+                          <td className="py-4 px-4 text-slate-500">{o.especialidad_oficio || '-'}</td>
+                          <td className="py-4 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingOficio(o);
+                                setOficioName(o.nombre_oficio);
+                                setOficioSpecialty(o.especialidad_oficio || '');
+                                setShowOficioForm(true);
+                              }}
+                              className="text-primary font-bold text-xs hover:underline flex-inline items-center gap-1"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteOficio(o.id_oficio)}
+                              className="text-red-600 font-bold text-xs hover:underline flex-inline items-center gap-1"
+                            >
+                              Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              </div>
+
+              {/* Oficios Creator Form Side Block */}
+              {showOficioForm && (
+                <div className="w-80">
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                    <Card className="p-6 space-y-4 bg-white border border-black/5 shadow-lg relative">
+                      <button
+                        onClick={() => { setShowOficioForm(false); setEditingOficio(null); }}
+                        className="absolute top-4 right-4 p-1 hover:bg-slate-100 rounded-full text-slate-400"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+
+                      <h3 className="text-base font-bold text-slate-800 border-b pb-2">
+                        {editingOficio ? 'Editar Rubro' : 'Nuevo Rubro de Oficio'}
+                      </h3>
+
+                      <form onSubmit={handleCreateOrUpdateOficio} className="space-y-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Nombre</label>
+                          <input
+                            type="text"
+                            className="input-soft py-3 text-xs"
+                            placeholder="Ej: Electricista"
+                            required
+                            value={oficioName}
+                            onChange={e => setOficioName(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Especialidad (Opcional)</label>
+                          <input
+                            type="text"
+                            className="input-soft py-3 text-xs"
+                            placeholder="Ej: Alta Tensión, Redes"
+                            value={oficioSpecialty}
+                            onChange={e => setOficioSpecialty(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => { setShowOficioForm(false); setEditingOficio(null); }}
+                            className="flex-1 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="flex-1 py-2 bg-primary hover:bg-primary/95 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+                          >
+                            Guardar
+                          </button>
+                        </div>
+                      </form>
+                    </Card>
+                  </motion.div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'auth' | 'dashboard'>('landing');
+  const [view, setView] = useState<'landing' | 'auth' | 'dashboard' | 'admin-dashboard'>('landing');
   const [initialIsLogin, setInitialIsLogin] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [adminToken, setAdminToken] = useState<string | null>(localStorage.getItem('adminToken'));
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+
+  React.useEffect(() => {
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      setAdminToken(token);
+      setUser({ role: 'ADMIN', name: 'Administrador' });
+      setView('admin-dashboard');
+    }
+  }, []);
 
   const handleStart = (role: UserRole | null, isLogin: boolean = false) => {
     setInitialIsLogin(isLogin);
@@ -3007,6 +3903,8 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    setAdminToken(null);
+    localStorage.removeItem('adminToken');
     setView('landing');
   };
 
@@ -3019,7 +3917,7 @@ export default function App() {
       <AnimatePresence mode="wait">
         {view === 'landing' && (
           <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <LandingPage onStart={handleStart} />
+            <LandingPage onStart={handleStart} onAdminClick={() => setShowAdminLogin(true)} />
           </motion.div>
         )}
 
@@ -3042,7 +3940,23 @@ export default function App() {
             )}
           </motion.div>
         )}
+
+        {view === 'admin-dashboard' && adminToken && (
+          <motion.div key="admin-db" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <AdminDashboard user={user} token={adminToken} onLogout={handleLogout} />
+          </motion.div>
+        )}
       </AnimatePresence>
+
+      <AdminLoginModal
+        isOpen={showAdminLogin}
+        onClose={() => setShowAdminLogin(false)}
+        onLoginSuccess={(token, adminUser) => {
+          setAdminToken(token);
+          setUser(adminUser);
+          setView('admin-dashboard');
+        }}
+      />
     </div>
   );
 }
