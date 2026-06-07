@@ -42,7 +42,7 @@ export class JobsService {
     return data;
   }
 
-  private async ensureContract(conversation: any) {
+  private async ensureContract(conversation: any, forceReset = false) {
     const { data: existingContract, error: contractError } = await this.client
       .from('contrataciones')
       .select('*')
@@ -52,7 +52,8 @@ export class JobsService {
     if (contractError) throw new BadRequestException(contractError.message);
     
     if (existingContract) {
-      if (existingContract.estado_contratacion === 'Cancelada') {
+      const isFinalized = ['Cancelada', 'Confirmada', 'Rechazada'].includes(existingContract.estado_contratacion);
+      if (forceReset || isFinalized) {
         const { data: resetContract, error: updateError } = await this.client
           .from('contrataciones')
           .update({
@@ -112,7 +113,39 @@ export class JobsService {
 
     if (existingError) throw new BadRequestException(existingError.message);
 
-    const conversation = existingConversation || await (async () => {
+    let conversation = existingConversation;
+    let forceResetContract = false;
+
+    if (existingConversation) {
+      // Si la conversación ya existe pero se abre para una publicación diferente/nueva,
+      // actualizamos los enlaces de la publicación/postulación y reactivamos la conversación.
+      const shouldUpdatePub = publicationId !== undefined && existingConversation.id_publi !== publicationId;
+      
+      if (shouldUpdatePub || existingConversation.estado_conversacion === 'Cerrada') {
+        const updatePayload: Record<string, any> = {
+          estado_conversacion: 'Activa',
+          ultima_actividad: new Date().toISOString(),
+        };
+        if (publicationId !== undefined) {
+          updatePayload.id_publi = publicationId;
+          updatePayload.id_postulacion = postulationId ?? null;
+        }
+
+        const { data: updatedConversation, error: updateError } = await this.client
+          .from('conversaciones')
+          .update(updatePayload)
+          .eq('id_conversacion', existingConversation.id_conversacion)
+          .select()
+          .single();
+
+        if (updateError) throw new BadRequestException(updateError.message);
+        conversation = updatedConversation;
+
+        if (shouldUpdatePub) {
+          forceResetContract = true;
+        }
+      }
+    } else {
       const { data: createdConversation, error: createError } = await this.client
         .from('conversaciones')
         .insert({
@@ -127,10 +160,10 @@ export class JobsService {
         .single();
 
       if (createError) throw new BadRequestException(createError.message);
-      return createdConversation;
-    })();
+      conversation = createdConversation;
+    }
 
-    const contract = await this.ensureContract(conversation);
+    const contract = await this.ensureContract(conversation, forceResetContract);
 
     // Fetch counterpart names so the frontend can display them immediately
     const [{ data: workerProfile }] = await Promise.all([
@@ -367,6 +400,13 @@ export class JobsService {
       }
       nextStatus = 'Cancelada';
       fechaRechazo = now;
+    } else if (data.action === ContractAction.FINALIZE) {
+      if (existingContract.estado_contratacion !== 'Confirmada') {
+        throw new BadRequestException('Solo se pueden finalizar contratos que estén confirmados (en curso)');
+      }
+      nextStatus = 'Finalizada';
+      shouldCloseConversation = true;
+      fechaConfirmacion = now;
     }
 
     const updatePayload: Record<string, any> = {
@@ -388,7 +428,6 @@ export class JobsService {
       updatePayload.materiales_incluidos = null;
       updatePayload.descripcion_materiales = null;
     }
-
     const { data: updatedContract, error } = await this.client
       .from('contrataciones')
       .update(updatePayload)
@@ -397,6 +436,50 @@ export class JobsService {
       .single();
 
     if (error) throw new BadRequestException(error.message);
+
+    // Si la contratación fue confirmada, cambiamos el estado de la publicación a 'En curso'
+    if (data.action === ContractAction.CONFIRM) {
+      const { data: convData } = await this.client
+        .from('conversaciones')
+        .select('id_publi')
+        .eq('id_conversacion', conversationId)
+        .single();
+      
+      if (convData?.id_publi) {
+        const { error: pubError } = await this.client
+          .from('publicaciones')
+          .update({ estado_publi: 'En curso' })
+          .eq('id_publi', convData.id_publi);
+        
+        if (pubError) {
+          console.error(`[JobsService] Error al actualizar publicación ${convData.id_publi} a En curso:`, pubError.message);
+        } else {
+          console.log(`[JobsService] Publicación ${convData.id_publi} en curso exitosamente.`);
+        }
+      }
+    }
+
+    // Si la contratación fue finalizada, cambiamos el estado de la publicación a 'Concretada'
+    if (data.action === ContractAction.FINALIZE) {
+      const { data: convData } = await this.client
+        .from('conversaciones')
+        .select('id_publi')
+        .eq('id_conversacion', conversationId)
+        .single();
+      
+      if (convData?.id_publi) {
+        const { error: pubError } = await this.client
+          .from('publicaciones')
+          .update({ estado_publi: 'Concretada' })
+          .eq('id_publi', convData.id_publi);
+        
+        if (pubError) {
+          console.error(`[JobsService] Error al actualizar publicación ${convData.id_publi} a Concretada:`, pubError.message);
+        } else {
+          console.log(`[JobsService] Publicación ${convData.id_publi} concretada exitosamente.`);
+        }
+      }
+    }
 
     const conversationUpdate: Record<string, any> = {
       ultima_actividad: now
@@ -803,6 +886,23 @@ export class JobsService {
       throw new BadRequestException('Datos numéricos inválidos');
     }
 
+    // Verificar que la publicación exista y que su estado sea 'Abierta'
+    const { data: post, error: postError } = await this.client
+      .from('publicaciones')
+      .select('estado_publi')
+      .eq('id_publi', id_publi)
+      .maybeSingle();
+
+    if (postError) {
+      throw new BadRequestException(`Error al verificar la publicación: ${postError.message}`);
+    }
+    if (!post) {
+      throw new BadRequestException('La publicación no existe');
+    }
+    if (post.estado_publi !== 'Abierta') {
+      throw new BadRequestException('La publicación ya no está abierta para recibir presupuestos');
+    }
+
     const payload = {
       id_publi: id_publi,
       id_trabajador: id_trabajador,
@@ -874,5 +974,88 @@ export class JobsService {
     if (deleteError) throw new BadRequestException(deleteError.message);
     
     return { success: true, message: 'Publicación eliminada correctamente' };
+  }
+
+  async getContractHistory(userId: number, role: string) {
+    const isClient = role.toLowerCase() === 'cliente' || role.toUpperCase() === 'CLIENT';
+    const participantField = isClient ? 'id_cliente' : 'id_trabajador';
+    const counterpartRelation = isClient ? 'trabajadores' : 'clientes';
+
+    const { data, error } = await this.client
+      .from('contrataciones')
+      .select(`
+        *,
+        conversaciones (id_publi, id_postulacion),
+        counterpart: ${counterpartRelation} (*)
+      `)
+      .eq(participantField, userId);
+
+    if (error) {
+      throw new BadRequestException(`Error al obtener historial de contratos: ${error.message}`);
+    }
+
+    return (data || []).map((row: any) => {
+      const counterpartName = isClient
+        ? row.counterpart?.nombre_y_apellido_trabajador
+        : row.counterpart?.nombre_y_apellido_cliente;
+      
+      const counterpartAvatar = row.counterpart?.url_foto_perfil || null;
+
+      return {
+        id_contratacion: row.id_contratacion,
+        id_conversacion: row.id_conversacion,
+        id_cliente: row.id_cliente,
+        id_trabajador: row.id_trabajador,
+        estado_contratacion: row.estado_contratacion,
+        monto_acordado: row.monto_acordado,
+        precio_final_acordado: row.precio_final_acordado,
+        fecha_horario_acordado: row.fecha_horario_acordado,
+        materiales_incluidos: row.materiales_incluidos,
+        direccion_o_zona: row.direccion_o_zona,
+        condiciones_especiales: row.condiciones_especiales,
+        detalle_acuerdo: row.detalle_acuerdo,
+        fecha_solicitud: row.fecha_solicitud,
+        fecha_confirmacion: row.fecha_confirmacion,
+        fecha_rechazo: row.fecha_rechazo,
+        counterpart_name: counterpartName ?? 'Usuario YacaJobs',
+        counterpart_avatar: counterpartAvatar,
+        id_publi: row.conversaciones?.id_publi || null,
+        id_postulacion: row.conversaciones?.id_postulacion || null,
+      };
+    });
+  }
+
+  async closePostManual(postId: number, clientId: number) {
+    // 1. Verificar que la publicación exista
+    const { data: post, error: fetchError } = await this.client
+      .from('publicaciones')
+      .select('*')
+      .eq('id_publi', postId)
+      .maybeSingle();
+
+    if (fetchError) throw new BadRequestException(fetchError.message);
+    if (!post) throw new BadRequestException('La publicación no existe');
+
+    // 2. Validar propiedad
+    if (post.id_cliente !== clientId) {
+      throw new BadRequestException('No tienes permiso para cerrar esta publicación');
+    }
+
+    // 3. Validar estado
+    if (post.estado_publi !== 'Abierta') {
+      throw new BadRequestException('La publicación ya se encuentra cerrada');
+    }
+
+    // 4. Actualizar estado a Cancelada
+    const { data: updatedPost, error: updateError } = await this.client
+      .from('publicaciones')
+      .update({ estado_publi: 'Cancelada' })
+      .eq('id_publi', postId)
+      .select()
+      .single();
+
+    if (updateError) throw new BadRequestException(updateError.message);
+
+    return updatedPost;
   }
 }

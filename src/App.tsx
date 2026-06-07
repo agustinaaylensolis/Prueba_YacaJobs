@@ -8,6 +8,7 @@ import { COLORS } from './constants';
 import { UserRole } from './types';
 import { supabase } from './lib/supabase';
 import { SearchStrategyFactory } from './strategies/SearchStrategyFactory';
+import HistoryTab from './components/HistoryTab';
 
 // --- Interfaces ---
 export interface Notification {
@@ -714,6 +715,46 @@ const ConversationModal = ({
     }
   };
 
+  const handleFinalizeContract = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas marcar este trabajo como finalizado/concretado?')) return;
+    setNotice({ text: '', type: null });
+    try {
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorId: currentUserId,
+          actorRole: currentRole,
+          action: 'FINALIZE'
+        })
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setCurrentContract(updated);
+
+        // Enviar mensaje automático
+        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            senderId: currentUserId,
+            senderRole: currentRole,
+            content: '[TRABAJO FINALIZADO] ¡El servicio ha sido marcado como finalizado y concretado con éxito!'
+          })
+        });
+
+        await loadThread();
+        onSaved?.();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setNotice({ text: err.message || 'Error al finalizar contrato.', type: 'error' });
+      }
+    } catch {
+      setNotice({ text: 'Error de red.', type: 'error' });
+    }
+  };
+
   const isContractConfirmed = currentContract?.estado_contratacion === 'Confirmada';
   const eventDateString = currentContract?.fecha_hora || currentContract?.fecha_horario_acordado;
   
@@ -955,20 +996,29 @@ const ConversationModal = ({
                       <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
                     </div>
                   </div>
-                  <div className="shrink-0 flex flex-col items-end">
+                  <div className="shrink-0 flex items-center gap-3">
                     <Button 
-                      variant="outline" 
-                      className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" 
-                      onClick={handleCancelConfirmedContract}
-                      disabled={!canCancel}
+                      variant="primary" 
+                      className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs py-2 px-4 font-bold" 
+                      onClick={handleFinalizeContract}
                     >
-                      Cancelar contrato
+                      Finalizar Trabajo
                     </Button>
-                    {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
-                      <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
-                        No es posible cancelar con menos de 1 hora de anticipación.
-                      </span>
-                    )}
+                    <div className="flex flex-col items-end">
+                      <Button 
+                        variant="outline" 
+                        className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" 
+                        onClick={handleCancelConfirmedContract}
+                        disabled={!canCancel}
+                      >
+                        Cancelar contrato
+                      </Button>
+                      {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
+                        <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
+                          No es posible cancelar con menos de 1 hora de anticipación.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1061,6 +1111,18 @@ const ConversationModal = ({
                 <div>
                   <h5 className="font-bold text-sm text-red-800">✕ Contrato Rechazado</h5>
                   <p className="text-xs text-red-600">Este contrato ha sido rechazado de manera definitiva.</p>
+                </div>
+              </div>
+            )}
+
+            {currentContract?.estado_contratacion === 'Finalizada' && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-center gap-3 animate-fade-in">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="font-bold text-sm text-emerald-800">✓ Trabajo Finalizado</h5>
+                  <p className="text-xs text-emerald-600">Este servicio ha sido concretado y marcado como finalizado con éxito.</p>
                 </div>
               </div>
             )}
@@ -1718,7 +1780,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
 };
 
 const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
-  const [activeTab, setActiveTab] = useState<'search' | 'posts' | 'profile' | 'messages'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'posts' | 'profile' | 'messages' | 'history'>('search');
   const { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead } = useNotifications(user?.id_cliente, UserRole.CLIENT);
   const unreadPosts = notifications.filter(n => !n.leido && n.seccion_destino === 'PEDIDOS').length;
   const unreadMessages = notifications.filter(n => !n.leido && n.seccion_destino === 'MENSAJERIA').length;
@@ -1893,6 +1955,26 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     }
   };
 
+  const handleClosePost = async (postId: number) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar esta publicación? Los trabajadores ya no podrán enviarte presupuestos.')) return;
+    try {
+      const res = await fetch(`/api/jobs/posts/${postId}/close-manual`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: user.id_cliente })
+      });
+      if (res.ok) {
+        // Update local state reactively
+        setPosts(prev => prev.map(p => p.id_publi === postId ? { ...p, estado_publi: 'Cancelada' } : p));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error al eliminar la publicación.');
+      }
+    } catch {
+      alert('Error de red al intentar eliminar la publicación.');
+    }
+  };
+
   const sortedPostulations = React.useMemo(() => {
     const list = [...postulations];
     if (postulationsSort === 'price_asc') {
@@ -1975,12 +2057,12 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     loadConversations();
   }, [notifications]);
 
-  const openConversation = async (workerId: number) => {
+  const openConversation = async (workerId: number, publicationId?: number, postulationId?: number) => {
     setActiveTab('messages');
     setOpeningConversationId(workerId);
     const res = await fetch('/api/jobs/conversations/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: user.id_cliente, workerId })
+      body: JSON.stringify({ clientId: user.id_cliente, workerId, publicationId, postulationId })
     });
     if (!res.ok) {
       setOpeningConversationId(null);
@@ -2036,6 +2118,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             {unreadCountClient > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountClient}</span>}
           </button>
           <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
+          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4"/> Historial</button>
         </nav>
         <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
            <div className="flex items-center gap-3">
@@ -2263,20 +2346,46 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             )}
 
             <div className="space-y-4">
-               {posts.length > 0 ? posts.map(p => (
-                 <Card key={p.id_publi} className="p-6 flex justify-between items-center">
-                    <div className="space-y-1">
-                       <div className="flex gap-2 mb-2">
-                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.tipo_urgencia === 'Alta' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Urgencia {p.tipo_urgencia}</span>
-                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600`}>{p.estado_publi}</span>
-                       </div>
-                       <h4 className="font-bold text-slate-800">{p.oficios?.nombre_oficio}</h4>
-                       <p className="text-xs text-slate-500 max-w-lg">{p.descripcion_publi}</p>
-                    </div>
-                    <Button variant="outline" className="text-xs" onClick={() => handleViewPostulations(p)}>Ver Presupuestos</Button>
-                 </Card>
-               )) : (
-                 <div className="py-20 text-center text-slate-400">Aún no has realizado ninguna publicación.</div>
+               {posts.filter((p: any) => p.estado_publi !== 'Cancelada').length > 0 ? (
+                 posts
+                   .filter((p: any) => p.estado_publi !== 'Cancelada')
+                   .map((p: any) => (
+                     <Card key={p.id_publi} className="p-6 flex justify-between items-center">
+                        <div className="space-y-1">
+                           <div className="flex gap-2 mb-2">
+                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.tipo_urgencia === 'Alta' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>Urgencia {p.tipo_urgencia}</span>
+                             {p.estado_publi === 'Abierta' && (
+                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">Abierta</span>
+                             )}
+                             {p.estado_publi === 'En curso' && (
+                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">En curso</span>
+                             )}
+                             {p.estado_publi === 'Concretada' && (
+                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concretada</span>
+                             )}
+                             {p.estado_publi !== 'Abierta' && p.estado_publi !== 'En curso' && p.estado_publi !== 'Concretada' && (
+                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{p.estado_publi}</span>
+                             )}
+                           </div>
+                           <h4 className="font-bold text-slate-800">{p.oficios?.nombre_oficio}</h4>
+                           <p className="text-xs text-slate-500 max-w-lg">{p.descripcion_publi}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          {p.estado_publi === 'Abierta' && (
+                            <Button 
+                              variant="outline" 
+                              className="text-xs border-red-200 text-red-600 hover:bg-red-50"
+                              onClick={() => handleClosePost(p.id_publi)}
+                            >
+                              Eliminar Publicación
+                            </Button>
+                          )}
+                          <Button variant="outline" className="text-xs" onClick={() => handleViewPostulations(p)}>Ver Presupuestos</Button>
+                        </div>
+                     </Card>
+                   ))
+               ) : (
+                  <div className="py-20 text-center text-slate-400">Aún no has realizado ninguna publicación.</div>
                )}
             </div>
           </div>
@@ -2333,7 +2442,15 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         </div>
                         <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl italic">"{p.descripcion_postulacion}"</p>
                         <div className="mt-4 flex gap-2">
-                           <Button className="w-full text-xs py-2">Contactar</Button>
+                           <Button 
+                             className="w-full text-xs py-2"
+                             onClick={() => {
+                               setViewingPostulations(null);
+                               openConversation(p.id_trabajador, viewingPostulations.id_publi, p.id_postulacion);
+                             }}
+                           >
+                             Contactar
+                           </Button>
                            <Button variant="outline" className="w-full text-xs py-2" onClick={() => handleViewWorkerProfile(p.id_trabajador)}>Ver Perfil</Button>
                         </div>
                       </Card>
@@ -2505,13 +2622,17 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             </Card>
           </div>
         )}
+
+        {activeTab === 'history' && (
+          <HistoryTab user={user} role={UserRole.CLIENT} />
+        )}
       </main>
     </div>
   );
 };
 
 const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }) => {
-  const [activeTab, setActiveTab] = useState<'forum' | 'profile' | 'messages'>('forum');
+  const [activeTab, setActiveTab] = useState<'forum' | 'profile' | 'messages' | 'history'>('forum');
   const { notifications, unreadCount, markAsRead, markAllAsRead, markSectionAsRead } = useNotifications(user?.id_trabajador, UserRole.WORKER);
   const unreadForum = notifications.filter(n => !n.leido && n.seccion_destino === 'FORO').length;
   const unreadMessages = notifications.filter(n => !n.leido && n.seccion_destino === 'MENSAJERIA').length;
@@ -2672,6 +2793,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             {unreadCountWorker > 0 && <span className="bg-red-500 text-white font-bold text-[11px] h-5 min-w-5 px-1.5 rounded-full flex items-center justify-center transition-all duration-300">{unreadCountWorker}</span>}
           </button>
           <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'profile' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><User className="w-4 h-4"/> Mi Perfil</button>
+          <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm ${activeTab === 'history' ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'}`}><Clock3 className="w-4 h-4"/> Historial</button>
         </nav>
         <div className="pt-6 border-t flex flex-col gap-4">
            <div className="flex items-center gap-3">
@@ -2802,6 +2924,8 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               </div>
             )}
           </>
+        ) : activeTab === 'history' ? (
+          <HistoryTab user={user} role={UserRole.WORKER} />
         ) : (
           // Profile section
           <div className="max-w-2xl mx-auto space-y-8">
