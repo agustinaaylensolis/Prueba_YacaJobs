@@ -7,6 +7,7 @@ import { MessageNotifier } from './observers/message.notifier.js';
 import { ContractNotifier } from './observers/contract.notifier.js';
 import { InAppNotificationObserver } from './observers/in-app-notification.observer.js';
 import { EmailNotificationObserver } from './observers/email-notification.observer.js';
+import { InAppNotificationObserver } from './observers/in-app-notification.observer.js';
 
 @Module({
   imports: [SupabaseModule],
@@ -18,7 +19,7 @@ import { EmailNotificationObserver } from './observers/email-notification.observ
     ContractNotifier,
     InAppNotificationObserver,
     EmailNotificationObserver,
+    InAppNotificationObserver
   ],
 })
 export class JobsModule {}
-
