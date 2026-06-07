@@ -24,6 +24,10 @@ export class RegisterClientDto {
   celular_cliente!: string;
 
   // Estos campos se llenan después de subir a Supabase Storage
+  @IsUrl({}, { message: 'La URL de la foto de perfil no es valida.' })
+  @IsOptional()
+  url_foto_perfil?: string;
+
   @IsUrl({}, { message: 'La URL del DNI frente no es valida.' })
   @IsOptional()
   url_dni_frente!: string;

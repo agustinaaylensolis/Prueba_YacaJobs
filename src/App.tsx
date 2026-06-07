@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Briefcase, User, LogOut, ChevronRight, FileText, CheckCircle2, Star, ShieldCheck, MapPin, ChevronLeft, Loader2, CalendarDays, Mail, Phone, MessageSquare, Send, Inbox, Bell, X, RefreshCw, Clock3, Circle, Lock, Users, BarChart2, Trash2, Edit, Plus, ShieldAlert } from 'lucide-react';
 import RatingStars from './components/RatingStars';
-import { getWorkerRatings, createWorkerRating } from './lib/ratings';
+import { getWorkerRatings } from './lib/ratings';
 import { Rating } from './types';
 import { COLORS } from './constants';
 import { UserRole } from './types';
 import { supabase } from './lib/supabase';
 import { SearchStrategyFactory } from './strategies/SearchStrategyFactory';
 import HistoryTab from './components/HistoryTab';
+import { UserAvatar } from './components/UserAvatar';
 
 // --- Interfaces ---
 export interface Notification {
@@ -42,8 +43,9 @@ export const useNotifications = (userId: number | undefined, role: UserRole) => 
         .limit(20);
 
       if (!error && data) {
-        setNotifications(data);
-        setUnreadCount(data.filter(n => !n.leido).length);
+        const filteredData = data.filter(n => n.seccion_destino !== 'MENSAJERIA');
+        setNotifications(filteredData);
+        setUnreadCount(filteredData.filter(n => !n.leido).length);
       }
     };
 
@@ -66,7 +68,10 @@ export const useNotifications = (userId: number | undefined, role: UserRole) => 
           table: 'notificaciones',
           filter: `id_usuario=eq.${parsedUserId}`,
         },
-        () => {
+        (payload) => {
+          if (payload.new && (payload.new as any).seccion_destino === 'MENSAJERIA') {
+            return;
+          }
           fetchNotifications();
         }
       )
@@ -247,6 +252,7 @@ const ConversationModal = ({
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [workerContactInfo, setWorkerContactInfo] = useState<{ phone?: string; email?: string } | null>(null);
   const [workerContactLoading, setWorkerContactLoading] = useState(false);
+  const [clientIdentityInfo, setClientIdentityInfo] = useState<{ url_dni_frente?: string, fecha_actualizacion_dni?: string } | null>(null);
 
   // Estados del Contrato y Propuestas
   const [currentContract, setCurrentContract] = useState<ContractRecord | null>(conversation?.contract || null);
@@ -275,6 +281,16 @@ const ConversationModal = ({
 
   const counterpartName = conversation?.counterpart_name || 'Usuario';
   const isClient = currentRole === UserRole.CLIENT;
+
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  React.useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const loadThread = async () => {
     if (!conversation) return;
@@ -358,17 +374,29 @@ const ConversationModal = ({
     setNewRatingSuccess('');
 
     try {
-      await createWorkerRating({
-        puntuacion: newRating.puntuacion,
-        comentario: newRating.comentario.trim() || null,
-        id_emisor_cliente: currentUserId,
-        id_receptor_trabajador: conversation.id_trabajador,
+      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/rate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          puntuacion: newRating.puntuacion,
+          comentario: newRating.comentario.trim() || null,
+          id_emisor_cliente: currentUserId,
+          id_receptor_trabajador: conversation.id_trabajador,
+        }),
       });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Error al enviar la valoración.');
+      }
 
       setNewRatingSuccess('¡Valoración enviada con éxito!');
       setNewRating({ puntuacion: 0, comentario: '' });
       setHasAlreadyRated(true);
       setShowCreateRatingForm(false);
+      
+      await loadContract();
+      await loadThread();
       onSaved?.();
     } catch (error: any) {
       setNewRatingError(error.message || 'Error al enviar la valoración. Intenta nuevamente.');
@@ -382,14 +410,26 @@ const ConversationModal = ({
     loadThread();
     loadContract();
     checkExistingRating();
+
+    // Si es un trabajador interactuando con un cliente, buscar la identidad del cliente
+    if (currentRole === UserRole.WORKER) {
+      supabase.from('clientes')
+        .select('url_dni_frente, fecha_actualizacion_dni')
+        .eq('id_cliente', conversation.id_cliente)
+        .single()
+        .then(({ data }) => {
+          if (data) setClientIdentityInfo(data as any);
+        });
+    }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversation?.id_conversacion]);
 
-  // Supabase Realtime: subscribe to new messages for this conversation
+  // Supabase Realtime: subscribe to new messages and contract updates for this conversation
   React.useEffect(() => {
     if (!open || !conversation) return;
 
-    const channel = supabase
+    const channelMsgs = supabase
       .channel(`mensajes:conv:${conversation.id_conversacion}`)
       .on(
         'postgres_changes',
@@ -411,8 +451,26 @@ const ConversationModal = ({
       )
       .subscribe();
 
+    const channelContract = supabase
+      .channel(`contrato:conv:${conversation.id_conversacion}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contrataciones',
+          filter: `id_conversacion=eq.${conversation.id_conversacion}`,
+        },
+        () => {
+          loadContract();
+          onSaved?.();
+        }
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channelMsgs);
+      supabase.removeChannel(channelContract);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conversation?.id_conversacion]);
@@ -725,45 +783,7 @@ const ConversationModal = ({
     }
   };
 
-  const handleFinalizeContract = async () => {
-    if (!window.confirm('¿Estás seguro de que deseas marcar este trabajo como finalizado/concretado?')) return;
-    setNotice({ text: '', type: null });
-    try {
-      const res = await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/contract/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actorId: currentUserId,
-          actorRole: currentRole,
-          action: 'FINALIZE'
-        })
-      });
 
-      if (res.ok) {
-        const updated = await res.json();
-        setCurrentContract(updated);
-
-        // Enviar mensaje automático
-        await fetch(`/api/jobs/conversations/${conversation.id_conversacion}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            senderId: currentUserId,
-            senderRole: currentRole,
-            content: '[TRABAJO FINALIZADO] ¡El servicio ha sido marcado como finalizado y concretado con éxito!'
-          })
-        });
-
-        await loadThread();
-        onSaved?.();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setNotice({ text: err.message || 'Error al finalizar contrato.', type: 'error' });
-      }
-    } catch {
-      setNotice({ text: 'Error de red.', type: 'error' });
-    }
-  };
 
   const isContractConfirmed = currentContract?.estado_contratacion === 'Confirmada';
   const eventDateString = currentContract?.fecha_hora || currentContract?.fecha_horario_acordado;
@@ -812,25 +832,36 @@ const ConversationModal = ({
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0, y: 14, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-4xl">
-        <Card className="overflow-hidden bg-white shadow-2xl max-h-[90vh] overflow-y-auto p-0 relative">
+        <Card className="overflow-hidden bg-white shadow-2xl h-[90vh] max-h-[90vh] flex flex-col p-0 relative">
           {/* Header */}
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6 md:p-8">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 md:py-4 md:px-6">
             <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-400">
-                <MessageSquare className="w-4 h-4" /> Mensajería interna
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.20em] text-slate-400">
+                <MessageSquare className="w-3.5 h-3.5" /> Mensajería interna
               </div>
-              <h3 className="text-3xl font-extrabold text-slate-900 mt-2">{counterpartName}</h3>
-              <p className="text-sm text-slate-500 mt-1">Última actividad {formatDateTime(conversation.ultima_actividad)}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <h3 className="text-xl font-bold text-slate-900">{counterpartName}</h3>
+                {clientIdentityInfo?.url_dni_frente && (
+                  <div className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-0.5 rounded-md text-[10px] font-bold border border-green-200" title={`Verificado el ${clientIdentityInfo.fecha_actualizacion_dni ? new Date(clientIdentityInfo.fecha_actualizacion_dni).toLocaleDateString() : 'N/A'}`}>
+                    <ShieldCheck className="w-3 h-3" /> Identidad Verificada
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">Última actividad {formatDateTime(conversation.ultima_actividad)}</p>
             </div>
             <div className="flex items-center gap-2">
               {isClient && (
-                <Button variant="outline" className="shrink-0" onClick={loadWorkerContact} disabled={workerContactLoading}>
-                  {workerContactLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Phone className="w-4 h-4 mr-2" />}
+                <button
+                  onClick={loadWorkerContact}
+                  disabled={workerContactLoading}
+                  className="border border-primary text-primary hover:bg-primary-soft text-xs py-1.5 px-3 rounded-xl font-bold flex items-center shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                >
+                  {workerContactLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Phone className="w-3 h-3 mr-1.5" />}
                   Contactar
-                </Button>
+                </button>
               )}
-              <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-all cursor-pointer" title="Cerrar modal">
-                <X className="w-6 h-6" />
+              <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-all cursor-pointer" title="Cerrar modal">
+                <X className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -851,14 +882,14 @@ const ConversationModal = ({
           )}
 
           {/* Panel de Contrato / Negociación */}
-          <div className="bg-slate-50 border-b border-slate-200 p-6 md:px-8 space-y-4">
+          <div className="bg-slate-50 border-b border-slate-200 p-3 md:py-3 md:px-5 space-y-2 shrink-0">
             {(currentContract?.estado_contratacion === 'Pendiente' || currentContract?.estado_contratacion === 'Cancelada') && (
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm animate-fade-in">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-xl bg-white border border-slate-100 shadow-sm animate-fade-in">
+                <div className="space-y-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
                     {currentContract?.estado_contratacion === 'Cancelada' ? 'Estado: Contrato Cancelado' : 'Estado: Chat Activo'}
                   </span>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-xs text-slate-600">
                     {currentContract?.estado_contratacion === 'Cancelada' ? (
                       isClient
                         ? 'El contrato anterior fue cancelado. Puedes volver a contratar para solicitar una propuesta formal.'
@@ -873,52 +904,51 @@ const ConversationModal = ({
                 <div className="flex gap-2 shrink-0">
                   {isClient ? (
                     <>
-                      <Button
-                        variant="primary"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5 disabled:opacity-40"
+                      <button
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-1.5 px-3 font-bold rounded-lg flex items-center gap-1.5 disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
                         onClick={handleAcceptJobIntent}
                         disabled={!bothParticipated}
                       >
-                        <CheckCircle2 className="w-4 h-4" /> {currentContract?.estado_contratacion === 'Cancelada' ? 'Volver a contratar' : 'Aceptar trabajo'}
-                      </Button>
+                        <CheckCircle2 className="w-3.5 h-3.5" /> {currentContract?.estado_contratacion === 'Cancelada' ? 'Volver a contratar' : 'Aceptar trabajo'}
+                      </button>
                       {!bothParticipated && (
-                        <p className="text-[10px] text-slate-400 font-semibold self-center max-w-[140px] leading-tight">
+                        <p className="text-[9px] text-slate-400 font-semibold self-center max-w-[120px] leading-tight">
                           Ambas partes deben haber escrito al menos un mensaje.
                         </p>
                       )}
                     </>
                   ) : (
-                    <Button variant="outline" className="text-xs py-2 px-4 font-bold border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed" disabled>
+                    <button className="text-xs py-1.5 px-3 font-bold border border-slate-200 text-slate-400 bg-slate-50 rounded-lg cursor-not-allowed" disabled>
                       Aceptar pedido
-                    </Button>
+                    </button>
                   )}
                 </div>
               </div>
             )}
 
             {currentContract?.estado_contratacion === 'IntencionCliente' && (
-              <div className="flex flex-col gap-4 p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 shadow-sm animate-fade-in">
+              <div className="flex flex-col gap-2 p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 shadow-sm animate-fade-in">
                 {showRejectReasonInput ? (
-                  <div className="space-y-3">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Motivo del rechazo de la contratación (Opcional):</label>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Motivo del rechazo de la contratación (Opcional):</label>
                     <textarea
-                      className="input-soft w-full min-h-20 bg-white"
+                      className="w-full min-h-12 p-2 rounded-lg border border-slate-200 focus:border-indigo-300 outline-none text-xs bg-white"
                       placeholder="Ej: Conseguí otro profesional, presupuesto fuera del rango..."
                       value={rejectReason}
                       onChange={(e) => setRejectReason(e.target.value)}
                     />
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" className="text-xs py-2" onClick={() => setShowRejectReasonInput(false)}>Volver</Button>
-                      <Button variant="primary" className="bg-red-600 hover:bg-red-700 text-white text-xs py-2" onClick={handleCancelJobIntent}>
+                    <div className="flex justify-end gap-1.5">
+                      <button className="text-xs py-1 px-2.5 font-semibold text-slate-500 hover:text-slate-700 transition-all active:scale-95" onClick={() => setShowRejectReasonInput(false)}>Volver</button>
+                      <button className="bg-red-600 hover:bg-red-700 text-white text-xs py-1 px-3 font-bold rounded-lg transition-all active:scale-95" onClick={handleCancelJobIntent}>
                         Confirmar no contratar
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Estado: Intención de Contratación</span>
-                      <p className="text-sm text-slate-700 mt-1">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Estado: Intención de Contratación</span>
+                      <p className="text-xs text-slate-700">
                         {isClient
                           ? 'Has enviado una solicitud de contratación. Esperando propuesta del trabajador.'
                           : 'El cliente solicita tus servicios. Acepta el pedido para detallar tu propuesta de trabajo.'}
@@ -926,13 +956,13 @@ const ConversationModal = ({
                     </div>
                     <div className="flex gap-2 shrink-0">
                       {isClient ? (
-                        <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" onClick={() => setShowRejectReasonInput(true)}>
+                        <button className="border border-red-200 text-red-600 hover:bg-red-50 text-xs py-1.5 px-3 font-bold rounded-lg transition-all active:scale-95" onClick={() => setShowRejectReasonInput(true)}>
                           No contratar
-                        </Button>
+                        </button>
                       ) : (
-                        <Button variant="primary" className="bg-indigo-600 hover:bg-indigo-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5" onClick={() => setShowProposalForm(true)}>
-                          <Briefcase className="w-4 h-4" /> Aceptar pedido
-                        </Button>
+                        <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs py-1.5 px-3 font-bold rounded-lg flex items-center gap-1.5 transition-all active:scale-95" onClick={() => setShowProposalForm(true)}>
+                          <Briefcase className="w-3.5 h-3.5" /> Aceptar pedido
+                        </button>
                       )}
                     </div>
                   </div>
@@ -941,51 +971,51 @@ const ConversationModal = ({
             )}
 
             {currentContract?.estado_contratacion === 'PropuestaEnviada' && (
-              <div className="p-6 rounded-2xl bg-amber-50/50 border border-amber-200 shadow-sm space-y-4 animate-fade-in">
-                <div className="flex items-center justify-between border-b border-amber-200/50 pb-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Propuesta de Trabajo</span>
-                  <div className="text-lg font-black text-amber-900">${currentContract.monto}</div>
+              <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-200 shadow-sm space-y-2.5 animate-fade-in">
+                <div className="flex items-center justify-between border-b border-amber-200/50 pb-1.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">Propuesta de Trabajo</span>
+                  <div className="text-base font-black text-amber-900">${currentContract.monto}</div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="space-y-1">
-                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Fecha y Hora</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-400 uppercase text-[8px] tracking-wider block">Fecha y Hora</span>
                     <span className="text-slate-800 font-medium">{formatDateTime(currentContract.fecha_hora)}</span>
                   </div>
-                  <div className="space-y-1">
-                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Dirección</span>
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-400 uppercase text-[8px] tracking-wider block">Dirección</span>
                     <span className="text-slate-800 font-medium">{currentContract.direccion}</span>
                   </div>
-                  <div className="space-y-1 md:col-span-2">
-                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Descripción del Trabajo</span>
-                    <p className="text-slate-800 bg-white/60 p-2.5 rounded-xl border border-slate-100 italic leading-relaxed">"{currentContract.descripcion}"</p>
+                  <div className="space-y-0.5 md:col-span-2">
+                    <span className="font-bold text-slate-400 uppercase text-[8px] tracking-wider block">Descripción del Trabajo</span>
+                    <p className="text-slate-800 bg-white/60 p-2 rounded-lg border border-slate-100 italic leading-relaxed">"{currentContract.descripcion}"</p>
                   </div>
-                  <div className="space-y-1 md:col-span-2">
-                    <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider block">Materiales Incluidos</span>
+                  <div className="space-y-0.5 md:col-span-2">
+                    <span className="font-bold text-slate-400 uppercase text-[8px] tracking-wider block">Materiales Incluidos</span>
                     <span className="text-slate-800 font-medium block">
                       {currentContract.materiales_incluidos ? (
-                        <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-[10px] font-bold">Sí</span>
+                        <span className="bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full text-[9px] font-bold">Sí</span>
                       ) : (
-                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[10px] font-bold">No</span>
+                        <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full text-[9px] font-bold">No</span>
                       )}
                     </span>
                     {currentContract.materiales_incluidos && currentContract.descripcion_materiales && (
-                      <p className="text-slate-700 bg-white/60 p-2.5 rounded-xl border border-slate-100 mt-1 italic">
+                      <p className="text-slate-700 bg-white/60 p-2 rounded-lg border border-slate-100 mt-1 italic">
                         Detalles: {currentContract.descripcion_materiales}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 border-t border-amber-200/50 pt-3">
+                <div className="flex justify-end gap-1.5 border-t border-amber-200/50 pt-2">
                   {isClient ? (
                     <>
-                      <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold" onClick={handleRejectProposal}>
+                      <button className="border border-red-200 text-red-600 hover:bg-red-50 text-xs py-1.5 px-3 font-bold rounded-lg transition-all active:scale-95" onClick={handleRejectProposal}>
                         Cancelar
-                      </Button>
-                      <Button variant="primary" className="bg-emerald-600 hover:bg-emerald-700 text-xs py-2 px-4 font-bold flex items-center gap-1.5" onClick={handleConfirmContract}>
-                        <CheckCircle2 className="w-4 h-4" /> Contratar
-                      </Button>
+                      </button>
+                      <button className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-1.5 px-3 font-bold rounded-lg flex items-center gap-1.5 transition-all active:scale-95" onClick={handleConfirmContract}>
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Contratar
+                      </button>
                     </>
                   ) : (
                     <span className="text-xs text-amber-800 font-semibold italic">Esperando decisión del cliente sobre la propuesta.</span>
@@ -995,36 +1025,28 @@ const ConversationModal = ({
             )}
 
             {currentContract?.estado_contratacion === 'Confirmada' && (
-              <div className="space-y-4 w-full">
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
-                      <CheckCircle2 className="w-5 h-5" />
+              <div className="space-y-2 w-full">
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-full shrink-0">
+                      <CheckCircle2 className="w-4 h-4" />
                     </div>
                     <div>
-                      <h5 className="font-bold text-sm text-emerald-800">✓ Contrato Confirmado</h5>
-                      <p className="text-xs text-emerald-600">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
+                      <h5 className="font-bold text-xs text-emerald-800">✓ Contrato Confirmado</h5>
+                      <p className="text-[11px] text-emerald-600 mt-0.5">El trabajo ha sido formalizado. Los datos de contacto del profesional están disponibles.</p>
                     </div>
                   </div>
-                  <div className="shrink-0 flex items-center gap-3">
-                    <Button
-                      variant="primary"
-                      className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs py-2 px-4 font-bold"
-                      onClick={handleFinalizeContract}
-                    >
-                      Finalizar Trabajo
-                    </Button>
+                  <div className="shrink-0 flex items-center gap-2">
                     <div className="flex flex-col items-end">
-                      <Button
-                        variant="outline"
-                        className="border-red-200 text-red-600 hover:bg-red-50 text-xs py-2 px-4 font-bold"
+                      <button
+                        className="border border-red-200 text-red-600 hover:bg-red-50 text-xs py-1 px-2.5 rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed shrink-0 transition-all active:scale-95"
                         onClick={handleCancelConfirmedContract}
                         disabled={!canCancel}
                       >
                         Cancelar contrato
-                      </Button>
+                      </button>
                       {!canCancel && timeToEvent !== null && timeToEvent > 0 && (
-                        <span className="text-[10px] text-red-500 font-bold mt-1 max-w-[150px] text-right leading-tight">
+                        <span className="text-[9px] text-red-500 font-bold mt-0.5 max-w-[150px] text-right leading-tight">
                           No es posible cancelar con menos de 1 hora de anticipación.
                         </span>
                       )}
@@ -1033,39 +1055,39 @@ const ConversationModal = ({
                 </div>
 
                 {isClient && isTimeEligible && !hasAlreadyRated && (
-                  <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-4 animate-fade-in">
+                  <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/10 space-y-2.5 animate-fade-in">
                     {!showCreateRatingForm ? (
-                      <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center justify-between gap-3">
                         <div>
-                          <h6 className="font-bold text-sm text-primary">¿Cómo fue tu experiencia?</h6>
-                          <p className="text-xs text-slate-500">Ya puedes calificar a este trabajador por el servicio realizado.</p>
+                          <h6 className="font-bold text-xs text-primary">¿Cómo fue tu experiencia?</h6>
+                          <p className="text-[11px] text-slate-500">Ya puedes calificar a este trabajador por el servicio realizado.</p>
                         </div>
-                        <Button variant="primary" className="text-xs font-bold py-2 px-4 shrink-0" onClick={() => setShowCreateRatingForm(true)}>
+                        <button className="bg-primary hover:opacity-90 text-white text-xs font-bold py-1.5 px-3 rounded-lg shrink-0 transition-all active:scale-95" onClick={() => setShowCreateRatingForm(true)}>
                           Calificar trabajador
-                        </Button>
+                        </button>
                       </div>
                     ) : (
-                      <div className="space-y-4">
+                      <div className="space-y-2.5">
                         <div className="flex justify-between items-center">
-                          <h6 className="font-bold text-sm text-primary">Calificar a {counterpartName}</h6>
-                          <button onClick={() => setShowCreateRatingForm(false)} className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer">
+                          <h6 className="font-bold text-xs text-primary">Calificar a {counterpartName}</h6>
+                          <button onClick={() => setShowCreateRatingForm(false)} className="text-[11px] font-bold text-slate-400 hover:text-slate-600 cursor-pointer">
                             Cancelar
                           </button>
                         </div>
 
                         {newRatingError && (
-                          <div className="bg-red-100 text-red-700 p-3 rounded-xl text-xs font-bold">
+                          <div className="bg-red-100 text-red-700 p-2 rounded-lg text-[11px] font-bold">
                             {newRatingError}
                           </div>
                         )}
                         {newRatingSuccess && (
-                          <div className="bg-green-100 text-green-700 p-3 rounded-xl text-xs font-bold">
+                          <div className="bg-green-100 text-green-700 p-2 rounded-lg text-[11px] font-bold">
                             {newRatingSuccess}
                           </div>
                         )}
 
-                        <div className="space-y-2">
-                          <label className="text-xs font-semibold text-slate-700">Tu puntuación:</label>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-slate-700">Tu puntuación:</label>
                           <RatingStars
                             rating={newRating.puntuacion}
                             onRatingChange={(r) => setNewRating({ ...newRating, puntuacion: r })}
@@ -1073,32 +1095,32 @@ const ConversationModal = ({
                             size={5}
                           />
                           {newRating.puntuacion === 0 && newRatingError.includes('puntuación') && (
-                            <p className="text-[10px] text-red-600 font-semibold mt-1">La puntuación es obligatoria.</p>
+                            <p className="text-[9px] text-red-600 font-semibold mt-0.5">La puntuación es obligatoria.</p>
                           )}
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="text-xs font-semibold text-slate-700">Comentario (opcional):</label>
+                        <div className="space-y-0.5">
+                          <label className="text-[11px] font-semibold text-slate-700">Comentario (opcional):</label>
                           <textarea
-                            className="input-soft min-h-20 resize-none bg-white"
+                            className="w-full min-h-12 p-2 rounded-lg border border-slate-200 outline-none text-xs bg-white resize-none"
                             placeholder="Comparte tu experiencia..."
                             maxLength={500}
                             value={newRating.comentario}
                             onChange={(e) => setNewRating({ ...newRating, comentario: e.target.value })}
                           />
-                          <p className="text-[10px] text-slate-500 text-right">
+                          <p className="text-[9px] text-slate-500 text-right">
                             {newRating.comentario.length}/500
                           </p>
                         </div>
 
                         <div className="flex justify-end">
-                          <Button
+                          <button
                             onClick={handleCreateWorkerRating}
                             disabled={isSubmittingRating || newRating.puntuacion === 0}
-                            className="text-xs py-2 px-4"
+                            className="bg-primary hover:opacity-90 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-all active:scale-95 disabled:opacity-40"
                           >
-                            {isSubmittingRating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enviar valoración'}
-                          </Button>
+                            {isSubmittingRating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Enviar valoración'}
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1106,7 +1128,7 @@ const ConversationModal = ({
                 )}
 
                 {isClient && hasAlreadyRated && (
-                  <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold text-center">
+                  <div className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold text-center">
                     ✓ Ya has calificado a este trabajador por este servicio.
                   </div>
                 )}
@@ -1114,46 +1136,46 @@ const ConversationModal = ({
             )}
 
             {currentContract?.estado_contratacion === 'Rechazada' && (
-              <div className="p-4 rounded-2xl bg-red-50 border border-red-200 shadow-sm flex items-center gap-3 animate-fade-in">
-                <div className="p-2 bg-red-100 text-red-700 rounded-full">
-                  <X className="w-5 h-5" />
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 shadow-sm flex items-center gap-2 animate-fade-in">
+                <div className="p-1.5 bg-red-100 text-red-700 rounded-full shrink-0">
+                  <X className="w-4 h-4" />
                 </div>
                 <div>
-                  <h5 className="font-bold text-sm text-red-800">✕ Contrato Rechazado</h5>
-                  <p className="text-xs text-red-600">Este contrato ha sido rechazado de manera definitiva.</p>
+                  <h5 className="font-bold text-xs text-red-800">✕ Contrato Rechazado</h5>
+                  <p className="text-[11px] text-red-600">Este contrato ha sido rechazado de manera definitiva.</p>
                 </div>
               </div>
             )}
 
             {currentContract?.estado_contratacion === 'Finalizada' && (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-center gap-3 animate-fade-in">
-                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-full">
-                  <CheckCircle2 className="w-5 h-5" />
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-center gap-2 animate-fade-in">
+                <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-full shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h5 className="font-bold text-sm text-emerald-800">✓ Trabajo Finalizado</h5>
-                  <p className="text-xs text-emerald-600">Este servicio ha sido concretado y marcado como finalizado con éxito.</p>
+                  <h5 className="font-bold text-xs text-emerald-800">✓ Trabajo Finalizado</h5>
+                  <p className="text-[11px] text-emerald-600">Este servicio ha sido concretado y marcado como finalizado con éxito.</p>
                 </div>
               </div>
             )}
           </div>
 
           {notice.text && (
-            <div className={`mx-6 mt-6 rounded-2xl p-4 text-sm font-bold ${notice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            <div className={`mx-4 mt-2 rounded-xl p-2.5 text-xs font-bold ${notice.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} shrink-0`}>
               {notice.text}
             </div>
           )}
 
           {/* Chat Panel */}
-          <div className="p-6 md:p-8 space-y-5">
-            <div className="flex items-center justify-between">
-              <h4 className="text-lg font-bold text-slate-900">Chat</h4>
-              <Button variant="ghost" onClick={loadThread} className="text-xs">
-                <RefreshCw className="w-4 h-4 mr-2" /> Actualizar
-              </Button>
+          <div className="p-4 md:p-5 space-y-3 flex-1 flex flex-col min-h-0">
+            <div className="flex items-center justify-between shrink-0">
+              <h4 className="text-base font-bold text-slate-900">Chat</h4>
+              <button onClick={loadThread} className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center transition-all cursor-pointer">
+                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Actualizar
+              </button>
             </div>
 
-            <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-2">
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2">
               {isLoading ? (
                 <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
               ) : messages.length > 0 ? (
@@ -1173,20 +1195,33 @@ const ConversationModal = ({
               ) : (
                 <div className="py-20 text-center text-slate-400">Aún no hay mensajes en esta conversación.</div>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
-            <div className="space-y-3 pt-2">
+            <div className="relative pt-2 shrink-0">
               <textarea
-                className="input-soft min-h-28 resize-none"
+                rows={2}
+                className="w-full py-2.5 pl-4 pr-14 bg-slate-100 border border-transparent focus:border-slate-200 focus:bg-white rounded-2xl transition-all outline-none resize-none text-sm leading-normal disabled:opacity-50"
                 placeholder="Escribe un mensaje interno..."
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 disabled={currentContract?.estado_contratacion === 'Rechazada'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
               />
-              <div className="flex justify-end gap-2">
-                <Button onClick={handleSendMessage} disabled={isSending || !messageText.trim() || currentContract?.estado_contratacion === 'Rechazada'}>
-                  {isSending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Send className="w-4 h-4 mr-2" /> Enviar mensaje</>}
-                </Button>
+              <div className="absolute bottom-5 right-3">
+                <button
+                  onClick={handleSendMessage}
+                  disabled={isSending || !messageText.trim() || currentContract?.estado_contratacion === 'Rechazada'}
+                  className="bg-primary hover:opacity-90 text-white p-2 rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer shadow-sm"
+                  title="Enviar mensaje"
+                >
+                  {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
               </div>
             </div>
           </div>
@@ -1384,6 +1419,19 @@ const LandingPage = ({ onStart, onAdminClick }: { onStart: (role: UserRole | nul
   </div>
 );
 
+const uploadFileToSupabase = async (file: File | null, bucket: string, pathPrefix: string): Promise<string | undefined> => {
+  if (!file) return undefined;
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${pathPrefix}_${Date.now()}.${fileExt}`;
+  const { data, error } = await supabase.storage.from(bucket).upload(fileName, file);
+  if (error) {
+    console.error('Error uploading file:', error);
+    throw new Error(`Error al subir imagen al bucket ${bucket}: ${error.message}`);
+  }
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+  return publicData.publicUrl;
+};
+
 const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin: boolean; onAuth: (user: any) => void; onBackToLanding: () => void }) => {
   const [role, setRole] = useState<UserRole | null>(null);
   const [step, setStep] = useState(1);
@@ -1394,7 +1442,8 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
   const [trades, setTrades] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     name: '', email: '', password: '', dni: '', phone: '', age: '', tradeId: '',
-    files: { dniFront: null as File | null, dniBack: null as File | null, policeCert: null as File | null }
+    files: { dniFront: null as File | null, dniBack: null as File | null, policeCert: null as File | null, profilePic: null as File | null },
+    certificates: [] as { title: string, file: File | null }[]
   });
 
   React.useEffect(() => {
@@ -1437,7 +1486,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
     clearFieldError(field);
   };
 
-  const setFileField = (field: 'dniFront' | 'dniBack' | 'policeCert', value: File | null) => {
+  const setFileField = (field: 'dniFront' | 'dniBack' | 'policeCert' | 'profilePic', value: File | null) => {
     setFormData((prev) => ({ ...prev, files: { ...prev.files, [field]: value } }));
     clearFieldError(field);
   };
@@ -1502,14 +1551,15 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
     }
 
     if (step === 3) {
+      if (!formData.files.profilePic) errors.profilePic = 'Debes subir una foto de perfil.';
       if (!formData.files.dniFront) errors.dniFront = 'Debes subir el DNI frente.';
       if (!formData.files.dniBack) errors.dniBack = 'Debes subir el DNI dorso.';
 
       if (role === UserRole.WORKER) {
-        if (!formData.files.policeCert) {
-          errors.policeCert = 'Debes subir antecedentes penales.';
-        }
         if (!formData.tradeId) errors.tradeId = 'Selecciona al menos un oficio.';
+        // Validate certificates
+        const emptyCert = formData.certificates.find(c => !c.title.trim() || !c.file);
+        if (emptyCert) errors.certificates = 'Todos los certificados añadidos deben tener un título y un archivo.';
       }
     }
 
@@ -1620,6 +1670,39 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
         setTimeout(() => onAuth(normalizeAuthUser(result)), 1000);
       } else {
         // Registration
+        setMessage({ text: 'Subiendo imágenes, por favor espera...', type: 'success' });
+        
+        let url_foto_perfil, url_dni_frente, url_dni_dorso, url_dni_frente_trabajador, url_dni_reverso_trabajador, url_certificado_buena_conducta;
+        
+        try {
+          url_foto_perfil = await uploadFileToSupabase(formData.files.profilePic, 'avatars', 'profile');
+          const dniFrontUrl = await uploadFileToSupabase(formData.files.dniFront, 'dnis', 'dni_front');
+          const dniBackUrl = await uploadFileToSupabase(formData.files.dniBack, 'dnis', 'dni_back');
+          
+          if (role === UserRole.CLIENT) {
+            url_dni_frente = dniFrontUrl;
+            url_dni_dorso = dniBackUrl;
+          } else {
+            url_dni_frente_trabajador = dniFrontUrl;
+            url_dni_reverso_trabajador = dniBackUrl;
+            url_certificado_buena_conducta = await uploadFileToSupabase(formData.files.policeCert, 'certificados', 'police');
+          }
+        } catch (uploadError: any) {
+          throw { message: uploadError.message || 'Error al subir los archivos.' };
+        }
+
+        const uploadedCertificates = [];
+        if (role === UserRole.WORKER) {
+          for (const cert of formData.certificates) {
+            if (cert.file && cert.title.trim()) {
+              const certUrl = await uploadFileToSupabase(cert.file, 'certificados', 'cert');
+              if (certUrl) {
+                uploadedCertificates.push({ titulo: cert.title.trim(), url: certUrl });
+              }
+            }
+          }
+        }
+
         const endpoint = role === UserRole.CLIENT ? '/api/auth/register/client' : '/api/auth/register/worker';
         const payload = role === UserRole.CLIENT ? {
           correo_cliente: formData.email,
@@ -1628,8 +1711,9 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
           dni_cliente: Number(formData.dni),
           edad_cliente: Number(formData.age),
           celular_cliente: formData.phone,
-          url_dni_frente: 'https://placeholder.com/f',
-          url_dni_dorso: 'https://placeholder.com/d'
+          url_dni_frente,
+          url_dni_dorso,
+          url_foto_perfil
         } : {
           correo_trabajador: formData.email,
           contraseña_trabajador: formData.password,
@@ -1637,11 +1721,13 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
           dni_trabajador: Number(formData.dni),
           edad_trabajador: Number(formData.age),
           nro_celular_trabajador: formData.phone,
-          url_dni_frente_trabajador: 'https://placeholder.com/f',
-          url_dni_reverso_trabajador: 'https://placeholder.com/r',
-          url_certificado_buena_conducta: 'https://placeholder.com/c',
+          url_dni_frente_trabajador,
+          url_dni_reverso_trabajador,
+          url_certificado_buena_conducta,
           monotributo_trabajador: true,
-          id_oficios: [Number(formData.tradeId)]
+          id_oficios: [Number(formData.tradeId)],
+          url_foto_perfil,
+          certificados: uploadedCertificates
         };
 
         const response = await fetch(endpoint, {
@@ -1765,23 +1851,80 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
               )}
               {step === 3 && !isLogin && (
                 <motion.div key="s3" className="space-y-4">
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     <p className="text-xs font-bold text-gray-400 uppercase">Documentación Obligatoria</p>
+                    
+                    <div>
+                      <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${fieldErrors.profilePic ? 'border-red-400 text-red-600 bg-red-50' : (formData.files.profilePic ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50')}`}>
+                        <span className="text-xs font-bold">{formData.files.profilePic ? '✓ Foto seleccionada' : 'Subir Foto de Perfil'}</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => setFileField('profilePic', e.target.files?.[0] || null)} />
+                      </label>
+                      {fieldErrors.profilePic && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.profilePic}</p>}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
-                      <button onClick={() => setFileField('dniFront', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniFront ? 'border-red-400 text-red-600' : (formData.files.dniFront ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Frente</button>
-                      <button onClick={() => setFileField('dniBack', {} as File)} className={`p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.dniBack ? 'border-red-400 text-red-600' : (formData.files.dniBack ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>DNI Dorso</button>
+                      <label className={`p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${fieldErrors.dniFront ? 'border-red-400 text-red-600 bg-red-50' : (formData.files.dniFront ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50')}`}>
+                        <span className="text-[10px] font-bold">{formData.files.dniFront ? '✓ DNI Frente' : 'Subir DNI Frente'}</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => setFileField('dniFront', e.target.files?.[0] || null)} />
+                      </label>
+                      
+                      <label className={`p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${fieldErrors.dniBack ? 'border-red-400 text-red-600 bg-red-50' : (formData.files.dniBack ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50')}`}>
+                        <span className="text-[10px] font-bold">{formData.files.dniBack ? '✓ DNI Dorso' : 'Subir DNI Dorso'}</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => setFileField('dniBack', e.target.files?.[0] || null)} />
+                      </label>
                     </div>
                     {fieldErrors.dniFront && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniFront}</p>}
                     {fieldErrors.dniBack && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniBack}</p>}
+                    
                     {role === UserRole.WORKER && (
                       <>
-                        <button onClick={() => setFileField('policeCert', {} as File)} className={`w-full p-4 border-2 rounded-2xl text-xs font-bold ${fieldErrors.policeCert ? 'border-red-400 text-red-600' : (formData.files.policeCert ? 'border-primary text-primary' : 'border-dashed text-gray-400')}`}>Antecedentes Penales</button>
+                        <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${fieldErrors.policeCert ? 'border-red-400 text-red-600 bg-red-50' : (formData.files.policeCert ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50')}`}>
+                          <span className="text-xs font-bold">{formData.files.policeCert ? '✓ Antecedentes subidos' : 'Subir Antecedentes Penales'}</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => setFileField('policeCert', e.target.files?.[0] || null)} />
+                        </label>
                         {fieldErrors.policeCert && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.policeCert}</p>}
+                        
                         <select className={`input-soft ${fieldErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`} value={formData.tradeId} onChange={e => setFormField('tradeId', e.target.value)}>
                           <option value="">Selecciona tu Oficio</option>
                           {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
                         </select>
                         {fieldErrors.tradeId && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.tradeId}</p>}
+
+                        <div className="pt-4 border-t border-slate-100">
+                          <div className="flex justify-between items-center mb-2">
+                            <p className="text-xs font-bold text-gray-400 uppercase">Certificados Adicionales (Opcional)</p>
+                            <button onClick={() => setFormData(prev => ({...prev, certificates: [...prev.certificates, {title: '', file: null}]}))} className="text-xs text-primary font-bold hover:underline">+ Agregar</button>
+                          </div>
+                          
+                          {formData.certificates.map((cert, idx) => (
+                            <div key={idx} className="flex gap-2 mb-2 items-center">
+                              <input 
+                                className="input-soft flex-1 text-xs py-2" 
+                                placeholder="Título (ej: Gasista Matriculado)" 
+                                value={cert.title}
+                                onChange={(e) => {
+                                  const newCerts = [...formData.certificates];
+                                  newCerts[idx].title = e.target.value;
+                                  setFormData(prev => ({...prev, certificates: newCerts}));
+                                }}
+                              />
+                              <label className={`w-24 shrink-0 py-2 border rounded-xl flex items-center justify-center cursor-pointer transition-all ${cert.file ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
+                                <span className="text-[10px] font-bold">{cert.file ? '✓ Listo' : 'Subir'}</span>
+                                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                                  const newCerts = [...formData.certificates];
+                                  newCerts[idx].file = e.target.files?.[0] || null;
+                                  setFormData(prev => ({...prev, certificates: newCerts}));
+                                }} />
+                              </label>
+                              <button onClick={() => {
+                                const newCerts = [...formData.certificates];
+                                newCerts.splice(idx, 1);
+                                setFormData(prev => ({...prev, certificates: newCerts}));
+                              }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><X className="w-4 h-4"/></button>
+                            </div>
+                          ))}
+                          {fieldErrors.certificates && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.certificates}</p>}
+                        </div>
                       </>
                     )}
                   </div>
@@ -1821,9 +1964,31 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [newPost, setNewPost] = useState({ tradeId: '', description: '', urgency: '' });
   const [postErrors, setPostErrors] = useState<{ tradeId?: string; urgency?: string; description?: string }>({});
   const [postNotice, setPostNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
+  const [dbUser, setDbUser] = useState<any>(user);
   const [profileData, setProfileData] = useState({ ...user });
   const [isSaving, setIsSaving] = useState(false);
   const [profileNotice, setProfileNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
+  const [newProfilePic, setNewProfilePic] = useState<File | null>(null);
+  const [newDniFront, setNewDniFront] = useState<File | null>(null);
+  const [newDniBack, setNewDniBack] = useState<File | null>(null);
+
+  React.useEffect(() => {
+    const fetchUser = async () => {
+      const { data } = await supabase.from('clientes').select('*').eq('id_cliente', user.id_cliente).single();
+      if (data) {
+        setDbUser(data);
+        setProfileData((prev: any) => ({ ...prev, ...data }));
+      }
+    };
+    fetchUser();
+    
+    const sub = supabase.channel('client_sync').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clientes', filter: `id_cliente=eq.${user.id_cliente}` }, (payload) => {
+      setDbUser(payload.new);
+      setProfileData((prev: any) => ({ ...prev, ...payload.new }));
+    }).subscribe();
+    
+    return () => { supabase.removeChannel(sub); };
+  }, [user.id_cliente]);
   const [viewingPostulations, setViewingPostulations] = useState<any>(null);
   const [postulations, setPostulations] = useState<any[]>([]);
   const [postulationsSort, setPostulationsSort] = useState<'price_asc' | 'rating_desc'>('price_asc');
@@ -1833,6 +1998,8 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [workerProfileError, setWorkerProfileError] = useState('');
   const [workerRatings, setWorkerRatings] = useState<Rating[]>([]);
   const [isLoadingWorkerRatings, setIsLoadingWorkerRatings] = useState(false);
+  const [showAllRatings, setShowAllRatings] = useState(false);
+  const [showAllWorks, setShowAllWorks] = useState(false);
 
   const loadInitial = async () => {
     const clientId = Number(user?.id_cliente);
@@ -1945,8 +2112,16 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const handleUpdateProfile = async () => {
     setIsSaving(true);
-    setProfileNotice({ text: '', type: null });
+    setProfileNotice({ text: 'Guardando cambios...', type: 'success' });
     try {
+      let url_foto_perfil = user.url_foto_perfil;
+      let url_dni_frente = user.url_dni_frente;
+      let url_dni_dorso = user.url_dni_dorso;
+
+      if (newProfilePic) url_foto_perfil = await uploadFileToSupabase(newProfilePic, 'avatars', 'profile') || url_foto_perfil;
+      if (newDniFront) url_dni_frente = await uploadFileToSupabase(newDniFront, 'dnis', 'dni_front') || url_dni_frente;
+      if (newDniBack) url_dni_dorso = await uploadFileToSupabase(newDniBack, 'dnis', 'dni_back') || url_dni_dorso;
+
       const res = await fetch('/api/jobs/profile/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1956,7 +2131,10 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
           updates: {
             nombre_y_apellido_cliente: profileData.name,
             celular_cliente: profileData.celular_cliente,
-            edad_cliente: Number(profileData.edad_cliente)
+            edad_cliente: Number(profileData.edad_cliente),
+            url_foto_perfil,
+            url_dni_frente,
+            url_dni_dorso
           }
         })
       });
@@ -2047,6 +2225,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
     setWorkerProfileError('');
     setIsLoadingWorkerProfile(false);
     setWorkerRatings([]); // Limpiar ratings al cerrar el perfil
+    setShowAllRatings(false);
   };
 
   const workerProfileOpen = Boolean(selectedWorkerProfile || workerProfileError || isLoadingWorkerProfile);
@@ -2080,7 +2259,20 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   React.useEffect(() => {
     loadConversations();
     const iv = setInterval(loadConversations, 30000);
-    return () => clearInterval(iv);
+
+    const channel = supabase
+      .channel(`conversaciones_client_${user.id_cliente}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversaciones', filter: `id_cliente=eq.${user.id_cliente}` },
+        () => loadConversations()
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(iv);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -2249,9 +2441,6 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
           <div className="space-y-6 max-w-4xl mx-auto">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Mensajes</h2>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" onClick={loadConversations}><RefreshCw className="w-4 h-4 mr-2" />Actualizar</Button>
-              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2499,28 +2688,38 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
           <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-5xl">
               <Card className="p-0 overflow-hidden bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-8 md:p-10 flex flex-col md:flex-row md:items-center md:justify-between gap-8">
-                  <div className="flex items-center gap-6">
-                    <img
-                      src={selectedWorkerProfile?.url_foto_perfil || '/images/logo1.png'}
-                      alt="Foto de perfil"
-                      className="w-28 h-28 md:w-32 md:h-32 rounded-full object-cover border-4 border-white/10"
-                      onError={(e) => {
-                        e.currentTarget.src = '/images/logo1.png';
-                      }}
+                <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 md:p-8 flex flex-col md:flex-row md:items-start md:justify-between gap-8 relative">
+                  <button onClick={closeWorkerProfile} className="absolute top-4 right-4 p-2 text-white/50 hover:text-white hover:bg-white/10 rounded-full transition-colors md:top-6 md:right-6">
+                    <X className="w-6 h-6" />
+                  </button>
+                  <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mt-4 md:mt-0 text-center md:text-left w-full">
+                    <UserAvatar
+                      src={selectedWorkerProfile?.url_foto_perfil}
+                      className="w-24 h-24 md:w-28 md:h-28 rounded-full border-4 border-white/10 shrink-0"
                     />
-                    <div className="space-y-2">
-                      <h3 className="text-3xl font-extrabold tracking-tight">{selectedWorkerProfile?.nombre_y_apellido_trabajador || 'Perfil de trabajador'}</h3>
+                    <div className="space-y-2 flex-1">
+                      <h3 className="text-3xl font-extrabold tracking-tight pr-12">{selectedWorkerProfile?.nombre_y_apellido_trabajador || 'Perfil de trabajador'}</h3>
                       <p className="text-sm text-slate-300">{selectedWorkerProfile?.oficios?.map((o: any) => o.nombre_oficio).join(' • ') || 'Oficio no informado'}</p>
                       {selectedWorkerProfile?.fecha_registro && (
-                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                        <div className="flex items-center justify-center md:justify-start gap-2 text-sm text-slate-300">
                           <CalendarDays className="w-4 h-4" />
                           Miembro desde {new Date(selectedWorkerProfile.fecha_registro).toLocaleDateString()}
                         </div>
                       )}
+                      <div className="pt-4 flex justify-center md:justify-start">
+                        <Button 
+                          variant="primary" 
+                          className="px-8 py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 w-full md:w-auto"
+                          onClick={() => {
+                            openConversation(selectedWorkerProfile.id_trabajador);
+                            closeWorkerProfile();
+                          }}
+                        >
+                          <MessageSquare className="w-4 h-4" /> Contactar
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <Button variant="primary" className="px-8 py-3 text-base self-start md:self-center" onClick={closeWorkerProfile}>Cerrar perfil</Button>
                 </div>
 
                 <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -2531,53 +2730,144 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       <Card className="p-6 border border-red-200 bg-red-50 text-red-700 font-semibold">{workerProfileError}</Card>
                     ) : (
                       <>
-                        <section className="space-y-3">
-                          <h4 className="text-3xl font-extrabold text-slate-900">Trabajos realizados</h4>
-                          <p className="text-slate-600">
-                            {selectedWorkerProfile?.trabajos_realizados > 0
-                              ? `Este profesional tiene ${selectedWorkerProfile.trabajos_realizados} trabajos/postulaciones registrados en la plataforma.`
-                              : 'Este profesional aun no tiene trabajos cargados.'}
-                          </p>
+                        {/* Sección de Documentación Verificada */}
+                        <section className="space-y-4">
+                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Documentación Verificada</h4>
+                          <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                              {selectedWorkerProfile?.url_dni_frente_trabajador ? (
+                                <div className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-xl text-sm font-semibold border border-green-200">
+                                  <ShieldCheck className="w-4 h-4" /> Identidad Verificada (DNI)
+                                  {selectedWorkerProfile?.fecha_actualizacion_dni && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_dni).toLocaleDateString()}</span>}
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200">
+                                  <Circle className="w-4 h-4" /> Identidad (DNI): Pendiente
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              {selectedWorkerProfile?.certificado_trabajador ? (
+                                <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold border border-blue-200">
+                                  <ShieldCheck className="w-4 h-4" /> Antecedentes de Buena Conducta
+                                  {selectedWorkerProfile?.fecha_actualizacion_antecedentes && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_antecedentes).toLocaleDateString()}</span>}
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200">
+                                  <Circle className="w-4 h-4" /> Antecedentes: No cargado
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </section>
 
-                        {/* Sección de Resumen de Valoración */}
-                        <section className="space-y-4">
-                          <h4 className="text-3xl font-extrabold text-slate-900">Valoración</h4>
-                          <div className="flex items-center gap-2">
-                            <RatingStars rating={Number(selectedWorkerProfile?.puntuacion || 0)} size={5} />
-                            <span className="text-xl font-bold text-slate-800">
-                              {Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)} de 5
-                            </span>
+                        <section className="space-y-4 pt-6">
+                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Certificaciones Profesionales</h4>
+                          {selectedWorkerProfile?.certificados && selectedWorkerProfile.certificados.length > 0 ? (
+                            <div className="grid gap-3">
+                              {selectedWorkerProfile.certificados.map((cert: any, idx: number) => (
+                                <div key={idx} className="flex flex-col gap-2 p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors">
+                                  <div className="flex items-center gap-3">
+                                    <FileText className="w-5 h-5 text-primary" />
+                                    <span className="font-semibold text-slate-800 flex-1">{cert.titulo || cert.title || 'Certificado Profesional'}</span>
+                                    {cert.url && <a href={cert.url} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline shrink-0">Ver Documento</a>}
+                                  </div>
+                                  {cert.descripcion && <p className="text-sm text-slate-500 pl-8">{cert.descripcion}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-500 italic flex items-center gap-2">
+                              <FileText className="w-4 h-4" /> Este trabajador aún no ha cargado certificaciones profesionales.
+                            </p>
+                          )}
+                        </section>
+
+                        <section className="space-y-4 pt-6">
+                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Trabajos Realizados</h4>
+                          <div className="space-y-3">
+                            {showAllWorks ? (
+                              <>
+                                <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                                  {/* Aquí se cargarían los trabajos reales. Por ahora mockeamos si hay cantidad mayor a 0 */}
+                                  {selectedWorkerProfile?.trabajos_realizados > 0 ? (
+                                    [...Array(Math.min(selectedWorkerProfile.trabajos_realizados, 5))].map((_, idx) => (
+                                      <Card key={idx} className="p-4 border border-slate-100 shadow-sm">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <p className="font-bold text-sm text-slate-800">Trabajo Completado #{idx + 1}</p>
+                                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                        </div>
+                                        <p className="text-sm text-slate-600">Servicio prestado en la plataforma de forma exitosa.</p>
+                                      </Card>
+                                    ))
+                                  ) : (
+                                    <p className="text-slate-500 italic text-sm">No hay detalles disponibles aún.</p>
+                                  )}
+                                </div>
+                                <Button variant="outline" className="w-full text-sm py-2 mt-4" onClick={() => setShowAllWorks(false)}>
+                                  Ocultar trabajos
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <div className="p-4 bg-slate-50 rounded-xl flex items-center justify-between border border-slate-100">
+                                  <div className="flex items-center gap-3">
+                                    <CheckCircle2 className="w-8 h-8 text-green-500" />
+                                    <div>
+                                      <span className="text-2xl font-black text-slate-800">{selectedWorkerProfile?.trabajos_realizados || 0}</span>
+                                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Trabajos exitosos</p>
+                                    </div>
+                                  </div>
+                                </div>
+                                <Button variant="secondary" className="w-full text-sm py-2" onClick={() => setShowAllWorks(true)} disabled={!selectedWorkerProfile?.trabajos_realizados}>
+                                  Ver detalles
+                                </Button>
+                              </>
+                            )}
                           </div>
-                          <p className="text-sm text-slate-500">
-                            {selectedWorkerProfile?.totalRatings === 0
-                              ? 'No hay calificaciones aún'
-                              : `${selectedWorkerProfile?.totalRatings} valoraciones`}
-                          </p>
                         </section>
 
                         {/* Sección de Detalle de Valoraciones */}
-                        <section className="space-y-4">
-                          <h4 className="text-3xl font-extrabold text-slate-900">Opiniones de clientes</h4>
+                        <section className="space-y-4 pt-6">
+                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Opiniones de clientes</h4>
                           {isLoadingWorkerRatings ? (
                             <div className="py-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
                           ) : workerRatings.length > 0 ? (
                             <div className="space-y-3">
-                              {workerRatings.map((review: Rating) => (
-                                <Card key={review.id_valoracion} className="p-4 border border-slate-100">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <p className="font-bold text-sm text-slate-800">{review.nombre_cliente || 'Cliente Anónimo'}</p>
-                                    <RatingStars rating={review.puntuacion} size={3} />
+                              {showAllRatings ? (
+                                <>
+                                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                                    {workerRatings.map((review: Rating) => (
+                                      <Card key={review.id_valoracion} className="p-4 border border-slate-100 shadow-sm">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <p className="font-bold text-sm text-slate-800">{review.nombre_cliente || 'Cliente Anónimo'}</p>
+                                          <RatingStars rating={review.puntuacion} size={3} />
+                                        </div>
+                                        <p className="text-sm text-slate-600">{review.comentario || 'Sin comentario.'}</p>
+                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">
+                                          {new Date(review.fecha_valoracion).toLocaleDateString()}
+                                        </div>
+                                      </Card>
+                                    ))}
                                   </div>
-                                  <p className="text-sm text-slate-600">{review.comentario || 'Sin comentario.'}</p>
-                                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">
-                                    {new Date(review.fecha_valoracion).toLocaleDateString()}
+                                  <Button variant="outline" className="w-full text-sm py-2 mt-4" onClick={() => setShowAllRatings(false)}>
+                                    Ocultar opiniones
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
+                                    <p className="text-sm font-semibold text-slate-700">Hay {workerRatings.length} opiniones de clientes sobre este profesional.</p>
                                   </div>
-                                </Card>
-                              ))}
+                                  <Button variant="secondary" className="w-full text-sm py-2" onClick={() => setShowAllRatings(true)}>
+                                    Ver todas las opiniones
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           ) : (
-                            <p className="text-slate-500">Este profesional aún no tiene opiniones.</p>
+                            <p className="text-slate-500 italic">Este profesional aún no tiene opiniones.</p>
                           )}
                         </section>
 
@@ -2632,6 +2922,37 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             )}
             <Card className="p-8 space-y-6">
               <div className="space-y-4">
+                <div className="flex flex-col items-center gap-4 mb-6">
+                  <div className="relative group">
+                    <UserAvatar 
+                      src={newProfilePic ? URL.createObjectURL(newProfilePic) : user.url_foto_perfil} 
+                      className="w-24 h-24 rounded-full border-4 border-slate-100"
+                    />
+                    <label className="absolute inset-0 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                      <span className="text-[10px] font-bold">Cambiar</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={e => setNewProfilePic(e.target.files?.[0] || null)} />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="flex flex-col items-center">
+                    <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${newDniFront ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
+                      <span className="text-[10px] font-bold">{newDniFront ? '✓ Nuevo DNI Frente' : 'Actualizar DNI Frente'}</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => setNewDniFront(e.target.files?.[0] || null)} />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">Última actualización: {dbUser.fecha_actualizacion_dni ? new Date(dbUser.fecha_actualizacion_dni).toLocaleDateString() : 'No cargado'}</p>
+                  </div>
+                  
+                  <div className="flex flex-col items-center">
+                    <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${newDniBack ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
+                      <span className="text-[10px] font-bold">{newDniBack ? '✓ Nuevo DNI Dorso' : 'Actualizar DNI Dorso'}</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => setNewDniBack(e.target.files?.[0] || null)} />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">Última actualización: {dbUser.fecha_actualizacion_dni ? new Date(dbUser.fecha_actualizacion_dni).toLocaleDateString() : 'No cargado'}</p>
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
                   <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
@@ -2678,8 +2999,32 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [postulationNotice, setPostulationNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
   const [profileNotice, setProfileNotice] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
   const [isLoading, setIsLoading] = useState(false);
+  const [dbUser, setDbUser] = useState<any>(user);
   const [profileData, setProfileData] = useState({ ...user });
   const [isSaving, setIsSaving] = useState(false);
+  const [newProfilePic, setNewProfilePic] = useState<File | null>(null);
+  const [newDniFront, setNewDniFront] = useState<File | null>(null);
+  const [newDniBack, setNewDniBack] = useState<File | null>(null);
+  const [newBuenaConducta, setNewBuenaConducta] = useState<File | null>(null);
+  const [newCertificates, setNewCertificates] = useState<{title: string, description: string, file: File | null}[]>([]);
+
+  React.useEffect(() => {
+    const fetchUser = async () => {
+      const { data } = await supabase.from('trabajadores').select('*').eq('id_trabajador', user.id_trabajador).single();
+      if (data) {
+        setDbUser(data);
+        setProfileData((prev: any) => ({ ...prev, ...data }));
+      }
+    };
+    fetchUser();
+    
+    const sub = supabase.channel('worker_sync').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trabajadores', filter: `id_trabajador=eq.${user.id_trabajador}` }, (payload) => {
+      setDbUser(payload.new);
+      setProfileData((prev: any) => ({ ...prev, ...payload.new }));
+    }).subscribe();
+    
+    return () => { supabase.removeChannel(sub); };
+  }, [user.id_trabajador]);
 
   const loadPosts = async () => {
     setIsLoading(true);
@@ -2719,7 +3064,20 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   React.useEffect(() => {
     loadWorkerConversations();
     const iv = setInterval(loadWorkerConversations, 30000);
-    return () => clearInterval(iv);
+
+    const channel = supabase
+      .channel(`conversaciones_worker_${user.id_trabajador}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversaciones', filter: `id_trabajador=eq.${user.id_trabajador}` },
+        () => loadWorkerConversations()
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(iv);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -2781,8 +3139,33 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
   const handleUpdateProfile = async () => {
     setIsSaving(true);
-    setProfileNotice({ text: '', type: null });
+    setProfileNotice({ text: 'Guardando cambios y subiendo archivos...', type: 'success' });
     try {
+      let url_foto_perfil = dbUser.url_foto_perfil;
+      let url_dni_frente_trabajador = dbUser.url_dni_frente_trabajador;
+      let url_dni_reverso_trabajador = dbUser.url_dni_reverso_trabajador;
+      let certificado_trabajador = dbUser.certificado_trabajador;
+      let certificados = dbUser.certificados || [];
+
+      if (newProfilePic) url_foto_perfil = await uploadFileToSupabase(newProfilePic, 'avatars', 'profile') || url_foto_perfil;
+      if (newDniFront) url_dni_frente_trabajador = await uploadFileToSupabase(newDniFront, 'dnis', 'dni_front') || url_dni_frente_trabajador;
+      if (newDniBack) url_dni_reverso_trabajador = await uploadFileToSupabase(newDniBack, 'dnis', 'dni_back') || url_dni_reverso_trabajador;
+      if (newBuenaConducta) certificado_trabajador = await uploadFileToSupabase(newBuenaConducta, 'certificados', 'buena_conducta') || certificado_trabajador;
+
+      const uploadedCerts = [];
+      for (const cert of newCertificates) {
+        if (cert.file && cert.title.trim()) {
+          const certUrl = await uploadFileToSupabase(cert.file, 'certificados', 'cert');
+          if (certUrl) {
+            uploadedCerts.push({ titulo: cert.title.trim(), descripcion: cert.description.trim(), url: certUrl });
+          }
+        }
+      }
+
+      if (uploadedCerts.length > 0) {
+        certificados = [...certificados, ...uploadedCerts];
+      }
+
       const res = await fetch('/api/jobs/profile/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2791,12 +3174,22 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
           id: user.id_trabajador,
           updates: {
             nombre_y_apellido_trabajador: profileData.name,
-            nro_celular_trabajador: profileData.nro_celular_trabajador
+            nro_celular_trabajador: profileData.nro_celular_trabajador,
+            url_foto_perfil,
+            url_dni_frente_trabajador,
+            url_dni_reverso_trabajador,
+            certificado_trabajador,
+            certificados
           }
         })
       });
       if (res.ok) {
         setProfileNotice({ text: 'Perfil actualizado con exito.', type: 'success' });
+        setNewProfilePic(null);
+        setNewDniFront(null);
+        setNewDniBack(null);
+        setNewBuenaConducta(null);
+        setNewCertificates([]);
       } else {
         const errorData = await res.json().catch(() => ({}));
         setProfileNotice({ text: errorData.message || 'No se pudo actualizar el perfil.', type: 'error' });
@@ -2842,9 +3235,6 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-3xl font-bold text-primary">Mensajes</h2>
-              <Button variant="ghost" onClick={loadWorkerConversations} className="text-xs font-bold gap-2">
-                <RefreshCw className={`w-3 h-3`} /> Actualizar
-              </Button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2968,6 +3358,45 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
             )}
             <Card className="p-8 space-y-6">
               <div className="space-y-4">
+                <div className="flex flex-col items-center gap-4 mb-6">
+                  <div className="relative group">
+                    <UserAvatar 
+                      src={newProfilePic ? URL.createObjectURL(newProfilePic) : dbUser.url_foto_perfil} 
+                      className="w-24 h-24 rounded-full border-4 border-slate-100"
+                    />
+                    <label className="absolute inset-0 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                      <span className="text-[10px] font-bold">Cambiar</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={e => setNewProfilePic(e.target.files?.[0] || null)} />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="flex flex-col items-center">
+                    <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${newDniFront ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
+                      <span className="text-[10px] font-bold">{newDniFront ? '✓ Nuevo DNI Frente' : 'Actualizar DNI Frente'}</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => setNewDniFront(e.target.files?.[0] || null)} />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">Última actualización: {dbUser.fecha_actualizacion_dni ? new Date(dbUser.fecha_actualizacion_dni).toLocaleDateString() : 'No cargado'}</p>
+                  </div>
+                  
+                  <div className="flex flex-col items-center">
+                    <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${newDniBack ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
+                      <span className="text-[10px] font-bold">{newDniBack ? '✓ Nuevo DNI Dorso' : 'Actualizar DNI Dorso'}</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => setNewDniBack(e.target.files?.[0] || null)} />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">Última actualización: {dbUser.fecha_actualizacion_dni ? new Date(dbUser.fecha_actualizacion_dni).toLocaleDateString() : 'No cargado'}</p>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${newBuenaConducta ? 'border-blue-500 text-blue-500 bg-blue-50' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
+                      <span className="text-[10px] font-bold">{newBuenaConducta ? '✓ Nuevo Cert. Buena Conducta' : 'Actualizar Buena Conducta'}</span>
+                      <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => setNewBuenaConducta(e.target.files?.[0] || null)} />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">Última actualización: {dbUser.fecha_actualizacion_antecedentes ? new Date(dbUser.fecha_actualizacion_antecedentes).toLocaleDateString() : 'No cargado'}</p>
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
                   <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
@@ -2975,6 +3404,57 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
                   <input className="input-soft" value={profileData.nro_celular_trabajador} onChange={e => setProfileData({ ...profileData, nro_celular_trabajador: e.target.value })} />
+                </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-xs font-bold text-gray-400 uppercase">Certificados Adicionales (Nuevos)</p>
+                    <button onClick={() => setNewCertificates(prev => [...prev, {title: '', description: '', file: null}])} className="text-xs text-primary font-bold hover:underline">+ Agregar</button>
+                  </div>
+                  
+                  {newCertificates.map((cert, idx) => (
+                    <div key={idx} className="flex gap-2 mb-2 items-start">
+                      <div className="flex flex-col gap-2 flex-1">
+                        <input 
+                          className="input-soft flex-1 text-xs py-2" 
+                          placeholder="Título (ej: Gasista Matriculado)" 
+                          value={cert.title}
+                          onChange={(e) => {
+                            const newCerts = [...newCertificates];
+                            newCerts[idx].title = e.target.value;
+                            setNewCertificates(newCerts);
+                          }}
+                        />
+                        <input 
+                          className="input-soft flex-1 text-xs py-2" 
+                          placeholder="Descripción breve..." 
+                          value={cert.description}
+                          onChange={(e) => {
+                            const newCerts = [...newCertificates];
+                            newCerts[idx].description = e.target.value;
+                            setNewCertificates(newCerts);
+                          }}
+                        />
+                      </div>
+                      <label className={`w-24 shrink-0 py-4 border rounded-xl flex items-center justify-center cursor-pointer transition-all ${cert.file ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
+                        <span className="text-[10px] font-bold">{cert.file ? '✓ Listo' : 'Subir Doc'}</span>
+                        <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => {
+                          const newCerts = [...newCertificates];
+                          newCerts[idx].file = e.target.files?.[0] || null;
+                          setNewCertificates(newCerts);
+                        }} />
+                      </label>
+                      <button onClick={() => {
+                        const newCerts = [...newCertificates];
+                        newCerts.splice(idx, 1);
+                        setNewCertificates(newCerts);
+                      }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><X className="w-4 h-4"/></button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-slate-400 italic">Los certificados existentes se mantienen. Aquí puedes agregar nuevos.</p>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-2">
+                    Última actualización: {user.fecha_actualizacion_certificados ? new Date(user.fecha_actualizacion_certificados).toLocaleDateString() : 'No cargado'}
+                  </p>
                 </div>
               </div>
               <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">

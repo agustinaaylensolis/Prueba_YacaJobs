@@ -40,6 +40,7 @@ export class AuthService {
         celular_cliente: dto.celular_cliente,
         url_dni_frente: dto.url_dni_frente,
         url_dni_dorso: dto.url_dni_dorso,
+        url_foto_perfil: dto.url_foto_perfil,
       })
       .select()
       .single();
@@ -81,6 +82,8 @@ export class AuthService {
         certificado_trabajador: dto.url_certificado_buena_conducta, // Corrected column name from SQL
         monotributo_trabajador: dto.monotributo_trabajador,
         matricula_trabajador: dto.matricula_trabajador,
+        url_foto_perfil: dto.url_foto_perfil,
+        certificados: dto.certificados,
       })
       .select()
       .single();

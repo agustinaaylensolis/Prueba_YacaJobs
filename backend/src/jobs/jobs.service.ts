@@ -525,6 +525,119 @@ export class JobsService {
     };
   }
 
+  async submitRatingAndFinalize(
+    conversationId: number,
+    data: {
+      puntuacion: number;
+      comentario?: string;
+      id_emisor_cliente: number;
+      id_receptor_trabajador: number;
+    }
+  ) {
+    if (!data.puntuacion || data.puntuacion < 1 || data.puntuacion > 5) {
+      throw new BadRequestException('La puntuación debe ser entre 1 y 5.');
+    }
+    if (!data.id_emisor_cliente || !data.id_receptor_trabajador) {
+      throw new BadRequestException('El emisor y el receptor son requeridos para crear una valoración.');
+    }
+    if (data.comentario && data.comentario.length > 500) {
+      throw new BadRequestException('El comentario no puede exceder los 500 caracteres.');
+    }
+    if (data.id_emisor_cliente === data.id_receptor_trabajador) {
+      throw new BadRequestException('No puedes valorarte a ti mismo.');
+    }
+
+    const { data: conv, error: convError } = await this.client
+      .from('conversaciones')
+      .select('id_cliente, id_trabajador, id_publi')
+      .eq('id_conversacion', conversationId)
+      .single();
+
+    if (convError || !conv) {
+      throw new BadRequestException('Conversación no encontrada o inválida.');
+    }
+
+    if (conv.id_cliente !== data.id_emisor_cliente) {
+      throw new BadRequestException('El emisor de la valoración no coincide con el cliente de la conversación.');
+    }
+    if (conv.id_trabajador !== data.id_receptor_trabajador) {
+      throw new BadRequestException('El receptor de la valoración no coincide con el trabajador de la conversación.');
+    }
+
+    const { data: contract, error: contractError } = await this.client
+      .from('contrataciones')
+      .select('*')
+      .eq('id_conversacion', conversationId)
+      .maybeSingle();
+
+    if (contractError || !contract) {
+      throw new BadRequestException('No existe una contratación asociada a esta conversación.');
+    }
+
+    if (contract.estado_contratacion !== 'Confirmada') {
+      throw new BadRequestException('Solo se pueden calificar contratos que estén confirmados.');
+    }
+
+    const { data: existingRating, error: ratingCheckErr } = await this.client
+      .from('valoraciones')
+      .select('id_valoracion')
+      .eq('id_emisor_cliente', data.id_emisor_cliente)
+      .eq('id_receptor_trabajador', data.id_receptor_trabajador);
+
+    if (ratingCheckErr) {
+      throw new BadRequestException('Error al verificar valoración existente.');
+    }
+
+    if (existingRating && existingRating.length > 0) {
+      throw new BadRequestException('Ya has valorado a este trabajador.');
+    }
+
+    const { data: ratingRecord, error: insertError } = await this.client
+      .from('valoraciones')
+      .insert([
+        {
+          puntuacion: data.puntuacion,
+          comentario: data.comentario?.trim() || null,
+          id_emisor_cliente: data.id_emisor_cliente,
+          id_receptor_trabajador: data.id_receptor_trabajador,
+        }
+      ])
+      .select()
+      .single();
+
+    if (insertError) {
+      throw new BadRequestException(`Error al insertar valoración: ${insertError.message}`);
+    }
+
+    try {
+      const updatedContract = await this.updateContractStatus(conversationId, {
+        actorId: data.id_emisor_cliente,
+        actorRole: 'CLIENT',
+        action: ContractAction.FINALIZE,
+        note: contract.detalle_acuerdo || undefined,
+      });
+
+      // Enviar mensaje automático en la conversación notificando la finalización
+      await this.sendMessage(conversationId, {
+        senderId: data.id_emisor_cliente,
+        senderRole: 'CLIENT',
+        content: '[TRABAJO FINALIZADO] ¡El servicio ha sido marcado como finalizado y concretado con éxito al emitirse la calificación!'
+      });
+
+      return {
+        rating: ratingRecord,
+        contract: updatedContract,
+      };
+    } catch (finalizeError: any) {
+      await this.client
+        .from('valoraciones')
+        .delete()
+        .eq('id_valoracion', ratingRecord.id_valoracion);
+
+      throw new BadRequestException(`Error al finalizar el contrato: ${finalizeError.message}`);
+    }
+  }
+
   async updateContractAgreement(conversationId: number, data: UpdateContractAgreementDto) {
     const actorRole = this.normalizeRole(data.actorRole);
     const actorId = Number(data.actorId);
@@ -945,6 +1058,53 @@ export class JobsService {
     const table = role === 'CLIENT' ? 'clientes' : 'trabajadores';
     const idField = role === 'CLIENT' ? 'id_cliente' : 'id_trabajador';
 
+    // 1. Obtener el registro actual para comparar
+    const { data: currentUser, error: fetchError } = await this.client
+      .from(table)
+      .select('*')
+      .eq(idField, id)
+      .single();
+
+    if (fetchError) throw new BadRequestException(`Error al obtener perfil actual: ${fetchError.message}`);
+
+    const now = new Date().toISOString();
+
+    // 2. Comparar campos clave y asignar fecha de actualización si cambiaron
+    if (updates.url_foto_perfil !== undefined && updates.url_foto_perfil !== currentUser.url_foto_perfil) {
+      updates.fecha_actualizacion_foto = now;
+    }
+
+    if (role === 'CLIENT') {
+      // DNI para clientes
+      if ((updates.url_dni_frente !== undefined && updates.url_dni_frente !== currentUser.url_dni_frente) || 
+          (updates.url_dni_dorso !== undefined && updates.url_dni_dorso !== currentUser.url_dni_dorso)) {
+        updates.fecha_actualizacion_dni = now;
+      }
+    } else {
+      // DNI para trabajadores
+      if ((updates.url_dni_frente_trabajador !== undefined && updates.url_dni_frente_trabajador !== currentUser.url_dni_frente_trabajador) || 
+          (updates.url_dni_reverso_trabajador !== undefined && updates.url_dni_reverso_trabajador !== currentUser.url_dni_reverso_trabajador)) {
+        updates.fecha_actualizacion_dni = now;
+      }
+
+      // Certificados de buena conducta (antecedentes)
+      if (updates.certificado_trabajador !== undefined && updates.certificado_trabajador !== currentUser.certificado_trabajador) {
+        updates.fecha_actualizacion_antecedentes = now;
+      }
+
+      // Certificados JSONB
+      // Una comparación estricta en JSON es compleja, así que si envían certificados, podemos actualizar la fecha.
+      // O bien podemos verificar si el string serializado es diferente.
+      if (updates.certificados !== undefined) {
+        const currentCertsStr = JSON.stringify(currentUser.certificados || []);
+        const newCertsStr = JSON.stringify(updates.certificados || []);
+        if (currentCertsStr !== newCertsStr) {
+          updates.fecha_actualizacion_certificados = now;
+        }
+      }
+    }
+
+    // 3. Ejecutar actualización
     const { data, error } = await this.client
       .from(table)
       .update(updates)

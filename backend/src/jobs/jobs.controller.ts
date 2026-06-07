@@ -228,6 +228,23 @@ export class JobsController {
     return this.jobsService.updateContractStatus(parsedConversationId, data);
   }
 
+  @Post('conversations/:conversationId/rate')
+  async submitRating(
+    @Param('conversationId') conversationId: string,
+    @Body() data: {
+      puntuacion: number;
+      comentario?: string;
+      id_emisor_cliente: number;
+      id_receptor_trabajador: number;
+    }
+  ) {
+    const parsedConversationId = parseInt(conversationId, 10);
+    if (Number.isNaN(parsedConversationId)) {
+      throw new BadRequestException('ID de conversación inválido');
+    }
+    return this.jobsService.submitRatingAndFinalize(parsedConversationId, data);
+  }
+
   @Post('conversations/:conversationId/contract/agreement')
   async updateContractAgreement(
     @Param('conversationId') conversationId: string,

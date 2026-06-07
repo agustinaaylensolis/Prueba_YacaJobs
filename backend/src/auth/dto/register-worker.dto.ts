@@ -44,4 +44,12 @@ export class RegisterWorkerDto {
   @IsOptional()
   @IsString({ message: 'La matricula debe ser texto.' })
   matricula_trabajador?: string;
+
+  @IsOptional()
+  @IsUrl({}, { message: 'La URL de la foto de perfil no es valida.' })
+  url_foto_perfil?: string;
+
+  @IsOptional()
+  @IsArray({ message: 'Los certificados deben ser un arreglo.' })
+  certificados?: any[];
 }

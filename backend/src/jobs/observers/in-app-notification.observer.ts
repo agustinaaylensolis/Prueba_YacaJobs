@@ -77,7 +77,7 @@ export class InAppNotificationObserver implements Observer {
         // Dado que el cliente tiene 'PEDIDOS' y el trabajador no (solo FORO), enviaremos a 'PEDIDOS'
         // para el cliente, y 'FORO' (u otra genérica) para el trabajador si aplica.
         // El enunciado dice "Mis Pedidos" para el cliente y "Foro" para el trabajador.
-        seccion_destino: dest.tipo_usuario === 'CLIENT' ? 'PEDIDOS' : 'FORO',
+        seccion_destino: dest.tipo_usuario === 'CLIENT' ? 'PEDIDOS' : 'MENSAJERIA',
       }));
     }
 
