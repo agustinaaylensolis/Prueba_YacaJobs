@@ -4453,32 +4453,31 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
 };
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'auth' | 'dashboard' | 'admin-dashboard'>('landing');
-  const [initialIsLogin, setInitialIsLogin] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [adminToken, setAdminToken] = useState<string | null>(localStorage.getItem('adminToken'));
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-
-  React.useEffect(() => {
-    const token = localStorage.getItem('adminToken');
-    if (token) {
-      setAdminToken(token);
-      setUser({ role: 'ADMIN', name: 'Administrador' });
-      setView('admin-dashboard');
-      return;
+  const [user, setUser] = useState<any>(() => {
+    const savedAdmin = localStorage.getItem('adminToken');
+    if (savedAdmin) {
+      return { role: 'ADMIN', name: 'Administrador' };
     }
-
     const savedUser = localStorage.getItem('yacajobs_user');
     if (savedUser) {
       try {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
-        setView('dashboard');
+        return JSON.parse(savedUser);
       } catch (e) {
         localStorage.removeItem('yacajobs_user');
       }
     }
-  }, []);
+    return null;
+  });
+
+  const [view, setView] = useState<'landing' | 'auth' | 'dashboard' | 'admin-dashboard'>(() => {
+    if (localStorage.getItem('adminToken')) return 'admin-dashboard';
+    if (localStorage.getItem('yacajobs_user')) return 'dashboard';
+    return 'landing';
+  });
+
+  const [initialIsLogin, setInitialIsLogin] = useState(false);
+  const [adminToken, setAdminToken] = useState<string | null>(localStorage.getItem('adminToken'));
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
 
   const handleStart = (role: UserRole | null, isLogin: boolean = false) => {
     setInitialIsLogin(isLogin);
