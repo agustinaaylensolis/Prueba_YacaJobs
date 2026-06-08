@@ -441,7 +441,7 @@ export class JobsService {
     if (data.action === ContractAction.CONFIRM) {
       const { data: convData } = await this.client
         .from('conversaciones')
-        .select('id_publi')
+        .select('id_publi, id_trabajador')
         .eq('id_conversacion', conversationId)
         .single();
       
@@ -455,6 +455,22 @@ export class JobsService {
           console.error(`[JobsService] Error al actualizar publicación ${convData.id_publi} a En curso:`, pubError.message);
         } else {
           console.log(`[JobsService] Publicación ${convData.id_publi} en curso exitosamente.`);
+
+          // Notify other workers
+          const { data: postulates } = await this.client
+            .from('postulaciones')
+            .select('id_trabajador')
+            .eq('id_publi', convData.id_publi)
+            .neq('id_trabajador', convData.id_trabajador);
+
+          if (postulates && postulates.length > 0) {
+            const destinatarios = postulates.map((p: any) => p.id_trabajador);
+            await this.jobPostingNotifier.notify({ 
+               post: { id_publi: convData.id_publi }, 
+               action: 'CLOSED', 
+               destinatarios 
+            });
+          }
         }
       }
     }
@@ -982,6 +998,7 @@ export class JobsService {
 
   async getPosts(clientId?: number, tradeId?: number, workerId?: number) {
     let workerTradeIds: number[] = [];
+    let postulatedPostIds: number[] = [];
 
     if (workerId) {
       const { data: workerTrades, error: workerTradesError } = await this.client
@@ -998,6 +1015,14 @@ export class JobsService {
       if (workerTradeIds.length === 0) {
         return [];
       }
+
+      // Obtener las publicaciones a las que ya se ha postulado
+      const { data: workerPostulations } = await this.client
+        .from('postulaciones')
+        .select('id_publi')
+        .eq('id_trabajador', workerId);
+      
+      postulatedPostIds = (workerPostulations || []).map((p: any) => p.id_publi);
     }
 
     let query = this.client
@@ -1007,7 +1032,14 @@ export class JobsService {
     if (clientId) query = query.eq('id_cliente', clientId);
     if (tradeId) query = query.eq('id_oficio', tradeId);
     if (workerTradeIds.length > 0) query = query.in('id_oficio', workerTradeIds);
-    if (workerId) query = query.eq('estado_publi', 'Abierta');
+    
+    if (workerId) {
+      if (postulatedPostIds.length > 0) {
+        query = query.or(`estado_publi.eq.Abierta,id_publi.in.(${postulatedPostIds.join(',')})`);
+      } else {
+        query = query.eq('estado_publi', 'Abierta');
+      }
+    }
     
     query = query.order('fecha_publi', { ascending: false });
 
@@ -1246,6 +1278,21 @@ export class JobsService {
       .single();
 
     if (updateError) throw new BadRequestException(updateError.message);
+
+    // Notify ALL workers who postulated
+    const { data: postulates } = await this.client
+      .from('postulaciones')
+      .select('id_trabajador')
+      .eq('id_publi', postId);
+
+    if (postulates && postulates.length > 0) {
+      const destinatarios = postulates.map((p: any) => p.id_trabajador);
+      await this.jobPostingNotifier.notify({ 
+         post: { id_publi: postId }, 
+         action: 'CLOSED', 
+         destinatarios 
+      });
+    }
 
     return updatedPost;
   }

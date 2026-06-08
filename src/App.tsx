@@ -416,7 +416,7 @@ const ConversationModal = ({
       setNewRating({ puntuacion: 0, comentario: '' });
       setHasAlreadyRated(true);
       setShowCreateRatingForm(false);
-      
+
       await loadContract();
       await loadThread();
       onSaved?.();
@@ -862,7 +862,7 @@ const ConversationModal = ({
                 <MessageSquare className="w-3.5 h-3.5" /> Mensajería interna
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <h3 
+                <h3
                   className={`text-xl font-bold ${!isClient ? 'text-primary hover:underline cursor-pointer' : 'text-slate-900'}`}
                   onClick={() => !isClient && loadClientProfile()}
                   title={!isClient ? 'Ver perfil del cliente' : ''}
@@ -1418,7 +1418,7 @@ const ConversationModal = ({
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Documentación</p>
                         {clientProfileData.url_dni_frente ? (
                           <div className="flex items-center gap-2 bg-green-50 text-green-700 px-3 py-2 rounded-xl text-xs font-semibold border border-green-200">
-                            <ShieldCheck className="w-4 h-4 shrink-0" /> 
+                            <ShieldCheck className="w-4 h-4 shrink-0" />
                             <span>
                               Identidad Verificada (DNI)
                               {clientProfileData.fecha_actualizacion_dni && <span className="block text-[9px] font-normal mt-0.5 opacity-80">Actualizado: {new Date(clientProfileData.fecha_actualizacion_dni).toLocaleDateString()}</span>}
@@ -1770,14 +1770,14 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
       } else {
         // Registration
         setMessage({ text: 'Subiendo imágenes, por favor espera...', type: 'success' });
-        
+
         let url_foto_perfil, url_dni_frente, url_dni_dorso, url_dni_frente_trabajador, url_dni_reverso_trabajador, url_certificado_buena_conducta;
-        
+
         try {
           url_foto_perfil = await uploadFileToSupabase(formData.files.profilePic, 'avatars', 'profile');
           const dniFrontUrl = await uploadFileToSupabase(formData.files.dniFront, 'dnis', 'dni_front');
           const dniBackUrl = await uploadFileToSupabase(formData.files.dniBack, 'dnis', 'dni_back');
-          
+
           if (role === UserRole.CLIENT) {
             url_dni_frente = dniFrontUrl;
             url_dni_dorso = dniBackUrl;
@@ -1952,7 +1952,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                 <motion.div key="s3" className="space-y-4">
                   <div className="space-y-4">
                     <p className="text-xs font-bold text-gray-400 uppercase">Documentación Obligatoria</p>
-                    
+
                     <div>
                       <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${fieldErrors.profilePic ? 'border-red-400 text-red-600 bg-red-50' : (formData.files.profilePic ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50')}`}>
                         <span className="text-xs font-bold">{formData.files.profilePic ? '✓ Foto seleccionada' : 'Subir Foto de Perfil'}</span>
@@ -1966,7 +1966,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                         <span className="text-[10px] font-bold">{formData.files.dniFront ? '✓ DNI Frente' : 'Subir DNI Frente'}</span>
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => setFileField('dniFront', e.target.files?.[0] || null)} />
                       </label>
-                      
+
                       <label className={`p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${fieldErrors.dniBack ? 'border-red-400 text-red-600 bg-red-50' : (formData.files.dniBack ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50')}`}>
                         <span className="text-[10px] font-bold">{formData.files.dniBack ? '✓ DNI Dorso' : 'Subir DNI Dorso'}</span>
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => setFileField('dniBack', e.target.files?.[0] || null)} />
@@ -1974,7 +1974,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                     </div>
                     {fieldErrors.dniFront && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniFront}</p>}
                     {fieldErrors.dniBack && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.dniBack}</p>}
-                    
+
                     {role === UserRole.WORKER && (
                       <>
                         <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${fieldErrors.policeCert ? 'border-red-400 text-red-600 bg-red-50' : (formData.files.policeCert ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50')}`}>
@@ -1982,7 +1982,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => setFileField('policeCert', e.target.files?.[0] || null)} />
                         </label>
                         {fieldErrors.policeCert && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.policeCert}</p>}
-                        
+
                         <select className={`input-soft ${fieldErrors.tradeId ? 'border-red-400 focus:border-red-500' : ''}`} value={formData.tradeId} onChange={e => setFormField('tradeId', e.target.value)}>
                           <option value="">Selecciona tu Oficio</option>
                           {trades.map(t => <option key={t.id_oficio} value={t.id_oficio}>{t.nombre_oficio}</option>)}
@@ -1992,19 +1992,19 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                         <div className="pt-4 border-t border-slate-100">
                           <div className="flex justify-between items-center mb-2">
                             <p className="text-xs font-bold text-gray-400 uppercase">Certificados Adicionales (Opcional)</p>
-                            <button onClick={() => setFormData(prev => ({...prev, certificates: [...prev.certificates, {title: '', file: null}]}))} className="text-xs text-primary font-bold hover:underline">+ Agregar</button>
+                            <button onClick={() => setFormData(prev => ({ ...prev, certificates: [...prev.certificates, { title: '', file: null }] }))} className="text-xs text-primary font-bold hover:underline">+ Agregar</button>
                           </div>
-                          
+
                           {formData.certificates.map((cert, idx) => (
                             <div key={idx} className="flex gap-2 mb-2 items-center">
-                              <input 
-                                className="input-soft flex-1 text-xs py-2" 
-                                placeholder="Título (ej: Gasista Matriculado)" 
+                              <input
+                                className="input-soft flex-1 text-xs py-2"
+                                placeholder="Título (ej: Gasista Matriculado)"
                                 value={cert.title}
                                 onChange={(e) => {
                                   const newCerts = [...formData.certificates];
                                   newCerts[idx].title = e.target.value;
-                                  setFormData(prev => ({...prev, certificates: newCerts}));
+                                  setFormData(prev => ({ ...prev, certificates: newCerts }));
                                 }}
                               />
                               <label className={`w-24 shrink-0 py-2 border rounded-xl flex items-center justify-center cursor-pointer transition-all ${cert.file ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
@@ -2012,14 +2012,14 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                                   const newCerts = [...formData.certificates];
                                   newCerts[idx].file = e.target.files?.[0] || null;
-                                  setFormData(prev => ({...prev, certificates: newCerts}));
+                                  setFormData(prev => ({ ...prev, certificates: newCerts }));
                                 }} />
                               </label>
                               <button onClick={() => {
                                 const newCerts = [...formData.certificates];
                                 newCerts.splice(idx, 1);
-                                setFormData(prev => ({...prev, certificates: newCerts}));
-                              }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><X className="w-4 h-4"/></button>
+                                setFormData(prev => ({ ...prev, certificates: newCerts }));
+                              }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><X className="w-4 h-4" /></button>
                             </div>
                           ))}
                           {fieldErrors.certificates && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.certificates}</p>}
@@ -2081,12 +2081,12 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       }
     };
     fetchUser();
-    
+
     const sub = supabase.channel('client_sync').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clientes', filter: `id_cliente=eq.${user.id_cliente}` }, (payload) => {
       setDbUser(payload.new);
       setProfileData((prev: any) => ({ ...prev, ...payload.new }));
     }).subscribe();
-    
+
     return () => { supabase.removeChannel(sub); };
   }, [user.id_cliente]);
   const [viewingPostulations, setViewingPostulations] = useState<any>(null);
@@ -2809,8 +2809,8 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         </div>
                       )}
                       <div className="pt-6 flex md:hidden justify-center w-full">
-                        <Button 
-                          variant="primary" 
+                        <Button
+                          variant="primary"
                           className="px-8 py-3 text-base font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 w-full rounded-xl"
                           onClick={() => {
                             openConversation(selectedWorkerProfile.id_trabajador);
@@ -2828,8 +2828,8 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                       <RatingStars rating={Number(selectedWorkerProfile?.puntuacion || 0)} size={7} />
                       <span className="text-4xl font-extrabold text-white">{Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)}</span>
                     </div>
-                    <Button 
-                      variant="primary" 
+                    <Button
+                      variant="primary"
                       className="w-full py-4 text-base font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 rounded-xl"
                       onClick={() => {
                         openConversation(selectedWorkerProfile.id_trabajador);
@@ -2864,7 +2864,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                               {selectedWorkerProfile?.url_dni_frente_trabajador ? (
                                 <div className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-xl text-sm font-semibold border border-green-200 w-full md:w-auto">
                                   <ShieldCheck className="w-4 h-4" /> Identidad Verificada (DNI)
-                                  {selectedWorkerProfile?.fecha_actualizacion_dni && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_dni).toLocaleDateString()}</span>}
+                                  {selectedWorkerProfile?.fecha_actualizacion_dni && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1" />{new Date(selectedWorkerProfile.fecha_actualizacion_dni).toLocaleDateString()}</span>}
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200 w-full md:w-auto">
@@ -2877,7 +2877,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                               {selectedWorkerProfile?.certificado_trabajador ? (
                                 <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold border border-blue-200 w-full md:w-auto">
                                   <ShieldCheck className="w-4 h-4" /> Antecedentes de Buena Conducta
-                                  {selectedWorkerProfile?.fecha_actualizacion_antecedentes && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_antecedentes).toLocaleDateString()}</span>}
+                                  {selectedWorkerProfile?.fecha_actualizacion_antecedentes && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1" />{new Date(selectedWorkerProfile.fecha_actualizacion_antecedentes).toLocaleDateString()}</span>}
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200 w-full md:w-auto">
@@ -2895,7 +2895,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                               {selectedWorkerProfile.certificados.map((cert: any, idx: number) => (
                                 <div key={idx} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl text-sm font-semibold border border-indigo-200">
                                   <ShieldCheck className="w-4 h-4" /> {cert.titulo || cert.title || 'Certificado Profesional'}
-                                  {selectedWorkerProfile?.fecha_actualizacion_certificados && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_certificados).toLocaleDateString()}</span>}
+                                  {selectedWorkerProfile?.fecha_actualizacion_certificados && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1" />{new Date(selectedWorkerProfile.fecha_actualizacion_certificados).toLocaleDateString()}</span>}
                                 </div>
                               ))}
                             </div>
@@ -2999,8 +2999,8 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               <div className="space-y-4">
                 <div className="flex flex-col items-center gap-4 mb-6">
                   <div className="relative group">
-                    <UserAvatar 
-                      src={newProfilePic ? URL.createObjectURL(newProfilePic) : user.url_foto_perfil} 
+                    <UserAvatar
+                      src={newProfilePic ? URL.createObjectURL(newProfilePic) : user.url_foto_perfil}
                       className="w-24 h-24 rounded-full border-4 border-slate-100"
                     />
                     <label className="absolute inset-0 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
@@ -3018,7 +3018,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     </label>
                     <p className="text-[10px] text-slate-400 mt-1 font-semibold">Última actualización: {dbUser.fecha_actualizacion_dni ? new Date(dbUser.fecha_actualizacion_dni).toLocaleDateString() : 'No cargado'}</p>
                   </div>
-                  
+
                   <div className="flex flex-col items-center">
                     <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${newDniBack ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
                       <span className="text-[10px] font-bold">{newDniBack ? '✓ Nuevo DNI Dorso' : 'Actualizar DNI Dorso'}</span>
@@ -3081,7 +3081,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   const [newDniFront, setNewDniFront] = useState<File | null>(null);
   const [newDniBack, setNewDniBack] = useState<File | null>(null);
   const [newBuenaConducta, setNewBuenaConducta] = useState<File | null>(null);
-  const [newCertificates, setNewCertificates] = useState<{title: string, description: string, file: File | null}[]>([]);
+  const [newCertificates, setNewCertificates] = useState<{ title: string, description: string, file: File | null }[]>([]);
 
   React.useEffect(() => {
     const fetchUser = async () => {
@@ -3092,12 +3092,12 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
       }
     };
     fetchUser();
-    
+
     const sub = supabase.channel('worker_sync').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trabajadores', filter: `id_trabajador=eq.${user.id_trabajador}` }, (payload) => {
       setDbUser(payload.new);
       setProfileData((prev: any) => ({ ...prev, ...payload.new }));
     }).subscribe();
-    
+
     return () => { supabase.removeChannel(sub); };
   }, [user.id_trabajador]);
 
@@ -3380,7 +3380,13 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         <span className="flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Cliente Verificado</span>
                       </div>
                     </div>
-                    <Button onClick={() => { setIsPostulating(p); setPostulationNotice({ text: '', type: null }); }} className="px-8">Enviar Presupuesto</Button>
+                    {p.estado_publi === 'Abierta' ? (
+                      <Button onClick={() => { setIsPostulating(p); setPostulationNotice({ text: '', type: null }); }} className="px-8">Enviar Presupuesto</Button>
+                    ) : (
+                      <div className="flex items-center bg-slate-100 px-4 py-2 rounded-xl text-xs font-bold text-slate-500 border border-slate-200 text-center">
+                        El foro fue cerrado
+                      </div>
+                    )}
                   </div>
                 </Card>
               )) : (
@@ -3435,8 +3441,8 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               <div className="space-y-4">
                 <div className="flex flex-col items-center gap-4 mb-6">
                   <div className="relative group">
-                    <UserAvatar 
-                      src={newProfilePic ? URL.createObjectURL(newProfilePic) : dbUser.url_foto_perfil} 
+                    <UserAvatar
+                      src={newProfilePic ? URL.createObjectURL(newProfilePic) : dbUser.url_foto_perfil}
                       className="w-24 h-24 rounded-full border-4 border-slate-100"
                     />
                     <label className="absolute inset-0 bg-black/50 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
@@ -3454,7 +3460,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     </label>
                     <p className="text-[10px] text-slate-400 mt-1 font-semibold">Última actualización: {dbUser.fecha_actualizacion_dni ? new Date(dbUser.fecha_actualizacion_dni).toLocaleDateString() : 'No cargado'}</p>
                   </div>
-                  
+
                   <div className="flex flex-col items-center">
                     <label className={`w-full p-4 border-2 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all text-center ${newDniBack ? 'border-primary text-primary bg-primary/5' : 'border-dashed text-gray-400 hover:bg-gray-50'}`}>
                       <span className="text-[10px] font-bold">{newDniBack ? '✓ Nuevo DNI Dorso' : 'Actualizar DNI Dorso'}</span>
@@ -3484,15 +3490,15 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                 <div className="pt-4 border-t border-slate-100">
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-xs font-bold text-gray-400 uppercase">Certificados Adicionales (Nuevos)</p>
-                    <button onClick={() => setNewCertificates(prev => [...prev, {title: '', description: '', file: null}])} className="text-xs text-primary font-bold hover:underline">+ Agregar</button>
+                    <button onClick={() => setNewCertificates(prev => [...prev, { title: '', description: '', file: null }])} className="text-xs text-primary font-bold hover:underline">+ Agregar</button>
                   </div>
-                  
+
                   {newCertificates.map((cert, idx) => (
                     <div key={idx} className="flex gap-2 mb-2 items-start">
                       <div className="flex flex-col gap-2 flex-1">
-                        <input 
-                          className="input-soft flex-1 text-xs py-2" 
-                          placeholder="Título (ej: Gasista Matriculado)" 
+                        <input
+                          className="input-soft flex-1 text-xs py-2"
+                          placeholder="Título (ej: Gasista Matriculado)"
                           value={cert.title}
                           onChange={(e) => {
                             const newCerts = [...newCertificates];
@@ -3500,9 +3506,9 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                             setNewCertificates(newCerts);
                           }}
                         />
-                        <input 
-                          className="input-soft flex-1 text-xs py-2" 
-                          placeholder="Descripción breve..." 
+                        <input
+                          className="input-soft flex-1 text-xs py-2"
+                          placeholder="Descripción breve..."
                           value={cert.description}
                           onChange={(e) => {
                             const newCerts = [...newCertificates];
@@ -3523,7 +3529,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                         const newCerts = [...newCertificates];
                         newCerts.splice(idx, 1);
                         setNewCertificates(newCerts);
-                      }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><X className="w-4 h-4"/></button>
+                      }} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><X className="w-4 h-4" /></button>
                     </div>
                   ))}
                   <p className="text-[10px] text-slate-400 italic">Los certificados existentes se mantienen. Aquí puedes agregar nuevos.</p>
@@ -4489,7 +4495,7 @@ export default function App() {
     const safeUser = { ...userData };
     delete safeUser.contrasena;
     delete safeUser.password;
-    
+
     setUser(safeUser);
     localStorage.setItem('yacajobs_user', JSON.stringify(safeUser));
     setView('dashboard');

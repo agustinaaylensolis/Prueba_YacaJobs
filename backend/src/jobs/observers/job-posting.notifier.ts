@@ -20,7 +20,7 @@ export class JobPostingNotifier implements Subject {
     }
   }
 
-  async notify(data: { post: any; destinatarios: any[] }): Promise<void> {
+  async notify(data: { post: any; action?: string; destinatarios: any[] }): Promise<void> {
     for (const observer of this.observers) {
       // Fire updates asynchronously so we don't block the main thread
       try {

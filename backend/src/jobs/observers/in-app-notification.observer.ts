@@ -28,16 +28,28 @@ export class InAppNotificationObserver implements Observer {
     }
 
     if (subject instanceof JobPostingNotifier) {
-      const { post, destinatarios } = payload;
-      notificaciones = destinatarios.map((id_usuario: number) => ({
-        id_usuario,
-        tipo_usuario: 'WORKER',
-        titulo: 'Nuevo trabajo en tu rubro',
-        mensaje: 'Se ha publicado un nuevo trabajo relacionado con tu oficio. ¡Revisalo y postúlate!',
-        id_publi: post.id_publi || post.id,
-        leido: false,
-        seccion_destino: 'FORO', // Redirige a Foro
-      }));
+      const { post, action, destinatarios } = payload;
+      if (action === 'CLOSED') {
+        notificaciones = destinatarios.map((id_usuario: number) => ({
+          id_usuario,
+          tipo_usuario: 'WORKER',
+          titulo: 'Foro Cerrado',
+          mensaje: 'El foro fue cerrado',
+          id_publi: post.id_publi || post.id,
+          leido: false,
+          seccion_destino: 'FORO',
+        }));
+      } else {
+        notificaciones = destinatarios.map((id_usuario: number) => ({
+          id_usuario,
+          tipo_usuario: 'WORKER',
+          titulo: 'Nuevo trabajo en tu rubro',
+          mensaje: 'Se ha publicado un nuevo trabajo relacionado con tu oficio. ¡Revisalo y postúlate!',
+          id_publi: post.id_publi || post.id,
+          leido: false,
+          seccion_destino: 'FORO',
+        }));
+      }
     } else if (subject instanceof MessageNotifier) {
       const { message, destinatarios } = payload;
       notificaciones = destinatarios.map((dest: { id_usuario: number; tipo_usuario: string }) => ({
@@ -52,7 +64,7 @@ export class InAppNotificationObserver implements Observer {
       const { contract, action, destinatarios } = payload;
       let titulo = 'Actualización de contrato';
       let mensaje = 'Hubo un cambio en tu trato.';
-      
+
       if (action === 'CONFIRM') {
         titulo = 'Contrato Confirmado';
         mensaje = 'El cliente ha aceptado tu propuesta.';
