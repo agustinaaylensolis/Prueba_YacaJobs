@@ -47,7 +47,7 @@ export class SearchProfileStrategy implements SearchStrategy {
     }
 
     try {
-      const url = `/api/jobs/workers/${workerId}?includeRatingsSummary=true`; // Asegurar que el backend incluya el resumen de ratings
+      const url = `/api/jobs/workers/${workerId}?includeRatingsSummary=true&t=${Date.now()}`; // Asegurar que el backend incluya el resumen de ratings y evitar caché
       const res = await fetch(url);
 
       // Intentar parsear JSON incluso si response no es ok

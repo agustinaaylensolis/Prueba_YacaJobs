@@ -56,6 +56,7 @@ export class AdminService {
       fecha_registro: c.fecha_registro,
       url_dni_frente: c.url_dni_frente,
       url_dni_dorso: c.url_dni_dorso,
+      fecha_actualizacion_dni: c.fecha_actualizacion_dni,
     }));
 
     const mappedWorkers = (workers || []).map(w => ({
@@ -68,7 +69,11 @@ export class AdminService {
       fecha_registro: w.fecha_registro,
       url_dni_frente: w.url_dni_frente_trabajador,
       url_dni_dorso: w.url_dni_reverso_trabajador,
+      fecha_actualizacion_dni: w.fecha_actualizacion_dni,
       certificado_buena_conducta: w.certificado_trabajador,
+      fecha_actualizacion_antecedentes: w.fecha_actualizacion_antecedentes,
+      certificados: w.certificados || [],
+      fecha_actualizacion_certificados: w.fecha_actualizacion_certificados,
       monotributo: w.monotributo_trabajador,
       matricula: w.matricula_trabajador,
     }));
@@ -76,20 +81,20 @@ export class AdminService {
     return [...mappedClients, ...mappedWorkers];
   }
 
-  async toggleUserSuspension(rol: 'CLIENT' | 'WORKER', id: number, suspendido: boolean) {
+  async deleteUser(rol: 'CLIENT' | 'WORKER', id: number) {
     const table = rol === 'CLIENT' ? 'clientes' : 'trabajadores';
     const idField = rol === 'CLIENT' ? 'id_cliente' : 'id_trabajador';
 
     const { data, error } = await this.client
       .from(table)
-      .update({ suspendido })
+      .delete()
       .eq(idField, id)
       .select()
       .maybeSingle();
 
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new BadRequestException('Usuario no encontrado');
-    return { success: true, message: `Usuario ${suspendido ? 'suspendido' : 'activado'} exitosamente` };
+    return { success: true, message: `Usuario eliminado exitosamente` };
   }
 
   async getOficios() {

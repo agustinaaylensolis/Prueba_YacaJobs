@@ -875,6 +875,12 @@ export class JobsService {
         url_foto_perfil,
         puntuacion,
         fecha_registro,
+        url_dni_frente_trabajador,
+        fecha_actualizacion_dni,
+        certificado_trabajador,
+        fecha_actualizacion_antecedentes,
+        certificados,
+        fecha_actualizacion_certificados,
         oficio_del_trabajador (
           oficios (
             id_oficio,
@@ -931,6 +937,12 @@ export class JobsService {
       url_foto_perfil: worker.url_foto_perfil,
       puntuacion: worker.puntuacion,
       fecha_registro: worker.fecha_registro,
+      url_dni_frente_trabajador: worker.url_dni_frente_trabajador,
+      fecha_actualizacion_dni: worker.fecha_actualizacion_dni,
+      certificado_trabajador: worker.certificado_trabajador,
+      fecha_actualizacion_antecedentes: worker.fecha_actualizacion_antecedentes,
+      certificados: worker.certificados,
+      fecha_actualizacion_certificados: worker.fecha_actualizacion_certificados,
       oficios: trades,
       valoraciones: normalizedReviews,
       cantidad_valoraciones: reviewsCount || 0,
@@ -1085,21 +1097,24 @@ export class JobsService {
       if ((updates.url_dni_frente_trabajador !== undefined && updates.url_dni_frente_trabajador !== currentUser.url_dni_frente_trabajador) || 
           (updates.url_dni_reverso_trabajador !== undefined && updates.url_dni_reverso_trabajador !== currentUser.url_dni_reverso_trabajador)) {
         updates.fecha_actualizacion_dni = now;
+        console.log('[updateProfile] Updated DNI date');
       }
 
       // Certificados de buena conducta (antecedentes)
+      console.log(`[updateProfile] Buena Conducta: updates=${updates.certificado_trabajador}, current=${currentUser.certificado_trabajador}`);
       if (updates.certificado_trabajador !== undefined && updates.certificado_trabajador !== currentUser.certificado_trabajador) {
         updates.fecha_actualizacion_antecedentes = now;
+        console.log('[updateProfile] Updated Antecedentes date');
       }
 
       // Certificados JSONB
-      // Una comparación estricta en JSON es compleja, así que si envían certificados, podemos actualizar la fecha.
-      // O bien podemos verificar si el string serializado es diferente.
       if (updates.certificados !== undefined) {
         const currentCertsStr = JSON.stringify(currentUser.certificados || []);
         const newCertsStr = JSON.stringify(updates.certificados || []);
+        console.log(`[updateProfile] Certificados JSON: current=${currentCertsStr}, new=${newCertsStr}`);
         if (currentCertsStr !== newCertsStr) {
           updates.fecha_actualizacion_certificados = now;
+          console.log('[updateProfile] Updated Certificados date');
         }
       }
     }
@@ -1233,5 +1248,23 @@ export class JobsService {
     if (updateError) throw new BadRequestException(updateError.message);
 
     return updatedPost;
+  }
+
+  async getClientProfile(clientId: number) {
+    const { data: client, error } = await this.client
+      .from('clientes')
+      .select('id_cliente, nombre_y_apellido_cliente, correo_cliente, celular_cliente, fecha_registro, url_foto_perfil, url_dni_frente, url_dni_dorso, fecha_actualizacion_dni')
+      .eq('id_cliente', clientId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(`Error al obtener el perfil del cliente: ${error.message}`);
+    }
+
+    if (!client) {
+      throw new BadRequestException('El perfil del cliente no existe');
+    }
+
+    return client;
   }
 }

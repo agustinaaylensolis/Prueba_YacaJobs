@@ -46,6 +46,15 @@ export class JobsController {
     return this.jobsService.getWorkerProfile(parsedId);
   }
 
+  @Get('clients/:clientId/profile')
+  async getClientProfile(@Param('clientId') clientId: string) {
+    const parsedId = parseInt(clientId, 10);
+    if (Number.isNaN(parsedId)) {
+      throw new BadRequestException('ID de cliente invalido');
+    }
+    return this.jobsService.getClientProfile(parsedId);
+  }
+
   @Post('post')
   async createPost(@Body() data: CreatePostDto) {
     return this.jobsService.createPost(data);

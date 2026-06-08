@@ -19,14 +19,13 @@ export class AdminController {
     return this.adminService.getUsers();
   }
 
-  @Post('users/:rol/:id/suspend')
+  @Delete('users/:rol/:id')
   @HttpCode(HttpStatus.OK)
-  async toggleUserSuspension(
+  async deleteUser(
     @Param('rol') rol: 'CLIENT' | 'WORKER',
-    @Param('id', ParseIntPipe) id: number,
-    @Body('suspendido') suspendido: boolean
+    @Param('id', ParseIntPipe) id: number
   ) {
-    return this.adminService.toggleUserSuspension(rol, id, suspendido);
+    return this.adminService.deleteUser(rol, id);
   }
 
   @Get('oficios')

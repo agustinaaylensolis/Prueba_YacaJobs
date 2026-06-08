@@ -254,6 +254,11 @@ const ConversationModal = ({
   const [workerContactLoading, setWorkerContactLoading] = useState(false);
   const [clientIdentityInfo, setClientIdentityInfo] = useState<{ url_dni_frente?: string, fecha_actualizacion_dni?: string } | null>(null);
 
+  // Estados Perfil de Cliente (para trabajador)
+  const [showClientProfile, setShowClientProfile] = useState(false);
+  const [clientProfileData, setClientProfileData] = useState<any>(null);
+  const [clientProfileLoading, setClientProfileLoading] = useState(false);
+
   // Estados del Contrato y Propuestas
   const [currentContract, setCurrentContract] = useState<ContractRecord | null>(conversation?.contract || null);
   const [showProposalForm, setShowProposalForm] = useState(false);
@@ -338,6 +343,23 @@ const ConversationModal = ({
       }
     } finally {
       setWorkerContactLoading(false);
+    }
+  };
+
+  const loadClientProfile = async () => {
+    if (isClient || !conversation) return;
+    setShowClientProfile(true);
+    if (clientProfileData) return;
+    setClientProfileLoading(true);
+    try {
+      const res = await fetch(`/api/jobs/clients/${conversation.id_cliente}/profile`);
+      if (res.ok) {
+        setClientProfileData(await res.json());
+      }
+    } catch (e) {
+      console.error('Error al cargar perfil de cliente:', e);
+    } finally {
+      setClientProfileLoading(false);
     }
   };
 
@@ -840,7 +862,13 @@ const ConversationModal = ({
                 <MessageSquare className="w-3.5 h-3.5" /> Mensajería interna
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <h3 className="text-xl font-bold text-slate-900">{counterpartName}</h3>
+                <h3 
+                  className={`text-xl font-bold ${!isClient ? 'text-primary hover:underline cursor-pointer' : 'text-slate-900'}`}
+                  onClick={() => !isClient && loadClientProfile()}
+                  title={!isClient ? 'Ver perfil del cliente' : ''}
+                >
+                  {counterpartName}
+                </h3>
                 {clientIdentityInfo?.url_dni_frente && (
                   <div className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-0.5 rounded-md text-[10px] font-bold border border-green-200" title={`Verificado el ${clientIdentityInfo.fecha_actualizacion_dni ? new Date(clientIdentityInfo.fecha_actualizacion_dni).toLocaleDateString() : 'N/A'}`}>
                     <ShieldCheck className="w-3 h-3" /> Identidad Verificada
@@ -1347,6 +1375,77 @@ const ConversationModal = ({
           )}
         </Card>
       </motion.div>
+
+      {/* MODAL PERFIL CLIENTE (Solo para Trabajadores) */}
+      <AnimatePresence>
+        {showClientProfile && (
+          <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-sm">
+              <Card className="p-0 overflow-hidden bg-white shadow-2xl relative">
+                <div className="bg-primary p-6 flex flex-col items-center justify-center relative">
+                  <button onClick={() => setShowClientProfile(false)} className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors bg-black/10 hover:bg-black/20 rounded-full p-1.5 cursor-pointer">
+                    <X className="w-4 h-4" />
+                  </button>
+                  <img
+                    src={clientProfileData?.url_foto_perfil || "https://ui-avatars.com/api/?name=Cliente&background=e2e8f0&color=64748b"}
+                    alt="Perfil Cliente"
+                    className="w-20 h-20 rounded-full border-4 border-white shadow-md mb-3 object-cover"
+                  />
+                  <h3 className="text-lg font-bold text-white text-center">
+                    {clientProfileData?.nombre_y_apellido_cliente || counterpartName}
+                  </h3>
+                  {clientProfileData?.correo_cliente && (
+                    <span className="text-xs text-white/80 mt-0.5">{clientProfileData.correo_cliente}</span>
+                  )}
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-primary-soft mt-1 bg-white/20 px-2 py-0.5 rounded-full">
+                    Perfil de Cliente
+                  </span>
+                </div>
+
+                <div className="p-5 space-y-4">
+                  {clientProfileLoading ? (
+                    <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+                  ) : clientProfileData ? (
+                    <>
+                      {clientProfileData.fecha_registro && (
+                        <div className="flex items-center gap-3 text-sm text-slate-600">
+                          <CalendarDays className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span>Miembro desde {new Date(clientProfileData.fecha_registro).toLocaleDateString()}</span>
+                        </div>
+                      )}
+
+                      <div className="pt-3 border-t border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Documentación</p>
+                        {clientProfileData.url_dni_frente ? (
+                          <div className="flex items-center gap-2 bg-green-50 text-green-700 px-3 py-2 rounded-xl text-xs font-semibold border border-green-200">
+                            <ShieldCheck className="w-4 h-4 shrink-0" /> 
+                            <span>
+                              Identidad Verificada (DNI)
+                              {clientProfileData.fecha_actualizacion_dni && <span className="block text-[9px] font-normal mt-0.5 opacity-80">Actualizado: {new Date(clientProfileData.fecha_actualizacion_dni).toLocaleDateString()}</span>}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 bg-slate-50 text-slate-500 px-3 py-2 rounded-xl text-xs font-medium border border-slate-200">
+                            <Circle className="w-4 h-4 shrink-0" /> Sin DNI cargado
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="py-4 text-center text-sm text-red-500">No se pudo cargar el perfil del cliente.</div>
+                  )}
+
+                  <div className="pt-2">
+                    <Button variant="outline" className="w-full py-2.5 text-xs font-bold" onClick={() => setShowClientProfile(false)}>
+                      Cerrar
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -1958,6 +2057,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
   }, [activeTab, notifications]);
   const [trades, setTrades] = useState<any[]>([]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [posts, setPosts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isPosting, setIsPosting] = useState(false);
@@ -2062,6 +2162,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
     const strategy = SearchStrategyFactory.create(strategyType);
     try {
+      setHasSearched(true);
       const results = await strategy.execute(strategyParams);
       // Ordenar descendente por puntuacion (mayor puntuacion primero, null/0 al final)
       const sortedResults = (results || []).sort((a: any, b: any) => {
@@ -2355,7 +2456,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
       <main className="flex-1 p-10 space-y-8 overflow-y-auto">
         {activeTab === 'search' && (
-          <div className="space-y-8 max-w-5xl">
+          <div className="space-y-8 w-full">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <input
@@ -2380,7 +2481,7 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               <Button onClick={() => handleSearch({})} className="px-8 shrink-0">Ver Todos</Button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4">
               {trades.map(t => (
                 <button
                   key={t.id_oficio}
@@ -2393,18 +2494,18 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
               {searchResults.length > 0 ? searchResults.map(w => {
                 // Normalizar nombres de oficios (soporta formato legacy y nuevo)
                 const workerTrades = w.oficios || w.oficio_del_trabajador?.map((ot: any) => ot?.oficios || ot).filter(Boolean) || [];
                 const tradeNames = workerTrades.map((t: any) => t?.nombre_oficio).filter(Boolean).join(', ');
                 return (
-                  <Card key={w.id_trabajador} className="p-6 space-y-4">
+                  <Card key={w.id_trabajador} className="p-6 space-y-4 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
-                      <div>
-                        <h4 className="font-bold text-sm">{w.nombre_y_apellido_trabajador}</h4>
-                        {tradeNames && <p className="text-[10px] text-slate-500 font-medium">{tradeNames}</p>}
+                      <div className="w-12 h-12 rounded-full shrink-0 bg-slate-100 flex items-center justify-center font-bold text-primary">{w.nombre_y_apellido_trabajador?.[0]}</div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-sm truncate">{w.nombre_y_apellido_trabajador}</h4>
+                        {tradeNames && <p className="text-[10px] text-slate-500 font-medium truncate">{tradeNames}</p>}
                         <p className="text-[10px] text-slate-400">Puntaje: {w.puntuacion || '0.0'}</p>
                       </div>
                     </div>
@@ -2428,11 +2529,11 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                     </div>
                   </Card>
                 )
-              }) : (
+              }) : hasSearched ? (
                 <div className="col-span-full py-12 text-center text-slate-400 font-medium">
                   {searchQuery.trim() ? `No se encontraron resultados para "${searchQuery.trim()}".` : 'No se encontraron trabajadores en esta categoría.'}
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         )}
@@ -2688,60 +2789,85 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
           <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-5xl">
               <Card className="p-0 overflow-hidden bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 md:p-8 flex flex-col md:flex-row md:items-start md:justify-between gap-8 relative">
-                  <button onClick={closeWorkerProfile} className="absolute top-4 right-4 p-2 text-white/50 hover:text-white hover:bg-white/10 rounded-full transition-colors md:top-6 md:right-6">
+                <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative">
+                  <button onClick={closeWorkerProfile} className="absolute top-4 right-4 md:top-6 md:right-6 p-2 text-white/50 hover:text-white hover:bg-white/10 rounded-full transition-colors z-20">
                     <X className="w-6 h-6" />
                   </button>
-                  <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mt-4 md:mt-0 text-center md:text-left w-full">
+
+                  <div className="flex flex-col md:flex-row items-center md:items-center gap-6 mt-8 md:mt-0 text-center md:text-left w-full md:w-auto flex-1">
                     <UserAvatar
                       src={selectedWorkerProfile?.url_foto_perfil}
-                      className="w-24 h-24 md:w-28 md:h-28 rounded-full border-4 border-white/10 shrink-0"
+                      className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-white/10 shrink-0"
                     />
-                    <div className="space-y-2 flex-1">
-                      <h3 className="text-3xl font-extrabold tracking-tight pr-12">{selectedWorkerProfile?.nombre_y_apellido_trabajador || 'Perfil de trabajador'}</h3>
-                      <p className="text-sm text-slate-300">{selectedWorkerProfile?.oficios?.map((o: any) => o.nombre_oficio).join(' • ') || 'Oficio no informado'}</p>
+                    <div className="space-y-1">
+                      <h3 className="text-2xl md:text-3xl font-extrabold tracking-tight">{selectedWorkerProfile?.nombre_y_apellido_trabajador || 'Perfil de trabajador'}</h3>
+                      <p className="text-lg md:text-xl text-slate-300 font-bold">{selectedWorkerProfile?.oficios?.map((o: any) => o.nombre_oficio).join(' • ') || 'Oficio no informado'}</p>
                       {selectedWorkerProfile?.fecha_registro && (
-                        <div className="flex items-center justify-center md:justify-start gap-2 text-sm text-slate-300">
+                        <div className="flex items-center justify-center md:justify-start gap-2 text-sm text-slate-300 mt-2">
                           <CalendarDays className="w-4 h-4" />
                           Miembro desde {new Date(selectedWorkerProfile.fecha_registro).toLocaleDateString()}
                         </div>
                       )}
-                      <div className="pt-4 flex justify-center md:justify-start">
+                      <div className="pt-6 flex md:hidden justify-center w-full">
                         <Button 
                           variant="primary" 
-                          className="px-8 py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 w-full md:w-auto"
+                          className="px-8 py-3 text-base font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 w-full rounded-xl"
                           onClick={() => {
                             openConversation(selectedWorkerProfile.id_trabajador);
                             closeWorkerProfile();
                           }}
                         >
-                          <MessageSquare className="w-4 h-4" /> Contactar
+                          <MessageSquare className="w-5 h-5" /> Mensaje
                         </Button>
                       </div>
                     </div>
                   </div>
+
+                  <div className="hidden md:flex flex-col items-stretch gap-2 shrink-0 md:mr-10">
+                    <div className="flex items-center justify-center gap-3 bg-white/10 px-8 py-4 rounded-xl border border-white/10 backdrop-blur-md">
+                      <RatingStars rating={Number(selectedWorkerProfile?.puntuacion || 0)} size={7} />
+                      <span className="text-4xl font-extrabold text-white">{Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)}</span>
+                    </div>
+                    <Button 
+                      variant="primary" 
+                      className="w-full py-4 text-base font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 rounded-xl"
+                      onClick={() => {
+                        openConversation(selectedWorkerProfile.id_trabajador);
+                        closeWorkerProfile();
+                      }}
+                    >
+                      <MessageSquare className="w-5 h-5" /> Mensaje
+                    </Button>
+                  </div>
+
+                  <div className="md:hidden flex flex-col items-center justify-center gap-1 bg-white/10 px-6 py-3 rounded-2xl border border-white/10 mx-auto w-full max-w-[250px]">
+                    <div className="flex items-center gap-2">
+                      <RatingStars rating={Number(selectedWorkerProfile?.puntuacion || 0)} size={6} />
+                      <span className="text-2xl font-bold text-white">{Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  <div className="lg:col-span-2 space-y-8">
+                <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+                  <div className="lg:col-span-2 space-y-4">
                     {isLoadingWorkerProfile ? (
                       <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
                     ) : workerProfileError ? (
                       <Card className="p-6 border border-red-200 bg-red-50 text-red-700 font-semibold">{workerProfileError}</Card>
                     ) : (
-                      <>
+                      <div className="flex flex-col h-full justify-between gap-4">
                         {/* Sección de Documentación Verificada */}
-                        <section className="space-y-4">
-                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Documentación Verificada</h4>
-                          <div className="flex flex-col gap-3">
+                        <section className="space-y-3">
+                          <h4 className="text-xl font-extrabold text-slate-900 border-b pb-2">Documentación Verificada</h4>
+                          <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-3">
                               {selectedWorkerProfile?.url_dni_frente_trabajador ? (
-                                <div className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-xl text-sm font-semibold border border-green-200">
+                                <div className="flex items-center gap-2 bg-green-50 text-green-700 px-4 py-2 rounded-xl text-sm font-semibold border border-green-200 w-full md:w-auto">
                                   <ShieldCheck className="w-4 h-4" /> Identidad Verificada (DNI)
                                   {selectedWorkerProfile?.fecha_actualizacion_dni && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_dni).toLocaleDateString()}</span>}
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200">
+                                <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200 w-full md:w-auto">
                                   <Circle className="w-4 h-4" /> Identidad (DNI): Pendiente
                                 </div>
                               )}
@@ -2749,12 +2875,12 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
                             <div className="flex items-center gap-3">
                               {selectedWorkerProfile?.certificado_trabajador ? (
-                                <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold border border-blue-200">
+                                <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold border border-blue-200 w-full md:w-auto">
                                   <ShieldCheck className="w-4 h-4" /> Antecedentes de Buena Conducta
                                   {selectedWorkerProfile?.fecha_actualizacion_antecedentes && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_antecedentes).toLocaleDateString()}</span>}
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200">
+                                <div className="flex items-center gap-2 bg-slate-50 text-slate-400 px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200 w-full md:w-auto">
                                   <Circle className="w-4 h-4" /> Antecedentes: No cargado
                                 </div>
                               )}
@@ -2762,18 +2888,14 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                           </div>
                         </section>
 
-                        <section className="space-y-4 pt-6">
-                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Certificaciones Profesionales</h4>
+                        <section className="space-y-3 pt-2">
+                          <h4 className="text-xl font-extrabold text-slate-900 border-b pb-2">Certificaciones Profesionales</h4>
                           {selectedWorkerProfile?.certificados && selectedWorkerProfile.certificados.length > 0 ? (
-                            <div className="grid gap-3">
+                            <div className="flex flex-wrap gap-2">
                               {selectedWorkerProfile.certificados.map((cert: any, idx: number) => (
-                                <div key={idx} className="flex flex-col gap-2 p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors">
-                                  <div className="flex items-center gap-3">
-                                    <FileText className="w-5 h-5 text-primary" />
-                                    <span className="font-semibold text-slate-800 flex-1">{cert.titulo || cert.title || 'Certificado Profesional'}</span>
-                                    {cert.url && <a href={cert.url} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline shrink-0">Ver Documento</a>}
-                                  </div>
-                                  {cert.descripcion && <p className="text-sm text-slate-500 pl-8">{cert.descripcion}</p>}
+                                <div key={idx} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl text-sm font-semibold border border-indigo-200">
+                                  <ShieldCheck className="w-4 h-4" /> {cert.titulo || cert.title || 'Certificado Profesional'}
+                                  {selectedWorkerProfile?.fecha_actualizacion_certificados && <span className="text-[10px] ml-1 opacity-70 flex items-center"><Clock3 className="w-3 h-3 mr-1"/>{new Date(selectedWorkerProfile.fecha_actualizacion_certificados).toLocaleDateString()}</span>}
                                 </div>
                               ))}
                             </div>
@@ -2784,126 +2906,79 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                           )}
                         </section>
 
-                        <section className="space-y-4 pt-6">
-                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Trabajos Realizados</h4>
-                          <div className="space-y-3">
-                            {showAllWorks ? (
-                              <>
-                                <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                                  {/* Aquí se cargarían los trabajos reales. Por ahora mockeamos si hay cantidad mayor a 0 */}
-                                  {selectedWorkerProfile?.trabajos_realizados > 0 ? (
-                                    [...Array(Math.min(selectedWorkerProfile.trabajos_realizados, 5))].map((_, idx) => (
-                                      <Card key={idx} className="p-4 border border-slate-100 shadow-sm">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <p className="font-bold text-sm text-slate-800">Trabajo Completado #{idx + 1}</p>
-                                          <CheckCircle2 className="w-4 h-4 text-green-500" />
-                                        </div>
-                                        <p className="text-sm text-slate-600">Servicio prestado en la plataforma de forma exitosa.</p>
-                                      </Card>
-                                    ))
-                                  ) : (
-                                    <p className="text-slate-500 italic text-sm">No hay detalles disponibles aún.</p>
-                                  )}
-                                </div>
-                                <Button variant="outline" className="w-full text-sm py-2 mt-4" onClick={() => setShowAllWorks(false)}>
-                                  Ocultar trabajos
-                                </Button>
-                              </>
-                            ) : (
-                              <>
-                                <div className="p-4 bg-slate-50 rounded-xl flex items-center justify-between border border-slate-100">
-                                  <div className="flex items-center gap-3">
-                                    <CheckCircle2 className="w-8 h-8 text-green-500" />
-                                    <div>
-                                      <span className="text-2xl font-black text-slate-800">{selectedWorkerProfile?.trabajos_realizados || 0}</span>
-                                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Trabajos exitosos</p>
-                                    </div>
-                                  </div>
-                                </div>
-                                <Button variant="secondary" className="w-full text-sm py-2" onClick={() => setShowAllWorks(true)} disabled={!selectedWorkerProfile?.trabajos_realizados}>
-                                  Ver detalles
-                                </Button>
-                              </>
-                            )}
+                        {/* Sección de Contacto */}
+                        <section className="space-y-3 pt-2">
+                          <h4 className="text-xl font-extrabold text-slate-900 border-b pb-2">Contacto</h4>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-700 font-medium">
+                              <Mail className="w-5 h-5 text-primary" /> {selectedWorkerProfile?.correo_trabajador || 'No informado'}
+                            </div>
+                            <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-700 font-medium">
+                              <Phone className="w-5 h-5 text-primary" /> {selectedWorkerProfile?.nro_celular_trabajador || 'No informado'}
+                            </div>
                           </div>
                         </section>
-
-                        {/* Sección de Detalle de Valoraciones */}
-                        <section className="space-y-4 pt-6">
-                          <h4 className="text-2xl font-extrabold text-slate-900 border-b pb-2">Opiniones de clientes</h4>
-                          {isLoadingWorkerRatings ? (
-                            <div className="py-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>
-                          ) : workerRatings.length > 0 ? (
-                            <div className="space-y-3">
-                              {showAllRatings ? (
-                                <>
-                                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                                    {workerRatings.map((review: Rating) => (
-                                      <Card key={review.id_valoracion} className="p-4 border border-slate-100 shadow-sm">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <p className="font-bold text-sm text-slate-800">{review.nombre_cliente || 'Cliente Anónimo'}</p>
-                                          <RatingStars rating={review.puntuacion} size={3} />
-                                        </div>
-                                        <p className="text-sm text-slate-600">{review.comentario || 'Sin comentario.'}</p>
-                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">
-                                          {new Date(review.fecha_valoracion).toLocaleDateString()}
-                                        </div>
-                                      </Card>
-                                    ))}
-                                  </div>
-                                  <Button variant="outline" className="w-full text-sm py-2 mt-4" onClick={() => setShowAllRatings(false)}>
-                                    Ocultar opiniones
-                                  </Button>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
-                                    <p className="text-sm font-semibold text-slate-700">Hay {workerRatings.length} opiniones de clientes sobre este profesional.</p>
-                                  </div>
-                                  <Button variant="secondary" className="w-full text-sm py-2" onClick={() => setShowAllRatings(true)}>
-                                    Ver todas las opiniones
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-slate-500 italic">Este profesional aún no tiene opiniones.</p>
-                          )}
-                        </section>
-
-                        {/* La sección de valoraciones ha sido trasladada al chat del contrato confirmado */}
-                      </>
+                      </div>
                     )}
                   </div>
 
-                  <div className="space-y-4">
-                    <Card className="p-6 space-y-4 border border-slate-200">
-                      <h5 className="text-2xl font-bold text-slate-900">Contacto</h5>
-                      <div className="space-y-3 text-sm text-slate-700">
-                        <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-primary" /> {selectedWorkerProfile?.correo_trabajador || 'No informado'}</div>
-                        <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-primary" /> {selectedWorkerProfile?.nro_celular_trabajador || 'No informado'}</div>
+                  <div className="flex flex-col h-full justify-between gap-4">
+                    <Card className="p-5 space-y-3 border border-slate-200 shrink-0">
+                      <h5 className="text-lg font-bold text-slate-900">Trabajos Realizados</h5>
+                      <div className="p-4 bg-slate-50 rounded-xl flex items-center gap-4 border border-slate-100">
+                        <CheckCircle2 className="w-8 h-8 text-green-500 shrink-0" />
+                        <div>
+                          <span className="text-3xl font-black text-slate-800 leading-none block">{selectedWorkerProfile?.trabajos_realizados || 0}</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 block">Trabajos Exitosos</span>
+                        </div>
                       </div>
                     </Card>
 
-                    <Card className="p-6 space-y-3 border border-slate-200">
-                      <h5 className="text-2xl font-bold text-slate-900">Experiencia</h5>
-                      <p className="text-sm text-slate-600">Puntuación promedio</p>
-                      <div className="flex items-center gap-2">
-                        <RatingStars rating={Number(selectedWorkerProfile?.puntuacion || 0)} size={5} />
-                        <span className="text-3xl font-extrabold text-primary">{Number(selectedWorkerProfile?.puntuacion || 0).toFixed(1)}</span>
-                      </div>
-                      <p className="text-sm text-slate-500">Basado en {selectedWorkerProfile?.totalRatings || 0} valoraciones</p>
-                    </Card>
+                    {/* Línea divisoria dinámica que ocupa el espacio intermedio */}
+                    <div className="flex-1 flex items-center justify-center px-4">
+                      <div className="w-full border-b border-slate-200"></div>
+                    </div>
 
-                    <Card className="p-6 space-y-3 border border-slate-200">
-                      <h5 className="text-2xl font-bold text-slate-900">Habilidades</h5>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedWorkerProfile?.oficios?.length ? selectedWorkerProfile.oficios.map((trade: any) => (
-                          <span key={trade.id_oficio} className="text-xs font-bold px-3 py-1 rounded-full bg-primary/10 text-primary">
-                            {trade.nombre_oficio}
-                          </span>
-                        )) : <p className="text-sm text-slate-500">Sin oficios registrados.</p>}
-                      </div>
+                    <Card className="p-5 space-y-3 border border-slate-200 shrink-0">
+                      <h5 className="text-lg font-bold text-slate-900">Opiniones</h5>
+                      {isLoadingWorkerRatings ? (
+                        <div className="py-4 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" /></div>
+                      ) : workerRatings.length > 0 ? (
+                        <div className="space-y-3">
+                          {showAllRatings ? (
+                            <>
+                              <div className="space-y-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                                {workerRatings.map((review: Rating) => (
+                                  <div key={review.id_valoracion} className="p-4 border border-slate-100 bg-slate-50 rounded-xl">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <p className="font-bold text-sm text-slate-800">{review.nombre_cliente || 'Cliente Anónimo'}</p>
+                                      <RatingStars rating={review.puntuacion} size={3} />
+                                    </div>
+                                    <p className="text-xs text-slate-600 mb-2">{review.comentario || 'Sin comentario.'}</p>
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                                      {new Date(review.fecha_valoracion).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <Button variant="outline" className="w-full text-xs py-2 mt-2" onClick={() => setShowAllRatings(false)}>
+                                Ocultar opiniones
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="p-4 bg-slate-50 rounded-xl text-center border border-slate-100">
+                                <p className="text-sm font-semibold text-slate-700">{workerRatings.length} opiniones en total</p>
+                              </div>
+                              <Button variant="secondary" className="w-full text-sm py-2" onClick={() => setShowAllRatings(true)}>
+                                Ver todas
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-slate-500 italic text-sm">Aún no tiene opiniones.</p>
+                      )}
                     </Card>
                   </div>
                 </div>
@@ -3453,7 +3528,7 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                   ))}
                   <p className="text-[10px] text-slate-400 italic">Los certificados existentes se mantienen. Aquí puedes agregar nuevos.</p>
                   <p className="text-[10px] text-slate-400 font-semibold mt-2">
-                    Última actualización: {user.fecha_actualizacion_certificados ? new Date(user.fecha_actualizacion_certificados).toLocaleDateString() : 'No cargado'}
+                    Última actualización: {dbUser.fecha_actualizacion_certificados ? new Date(dbUser.fecha_actualizacion_certificados).toLocaleDateString() : 'No cargado'}
                   </p>
                 </div>
               </div>
@@ -3638,31 +3713,28 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
     if (activeTab === 'publications') loadModerationData();
   }, [activeTab]);
 
-  const handleToggleSuspension = async (targetUser: any) => {
-    const nextState = !targetUser.suspendido;
-    if (!window.confirm(`¿Estás seguro de que deseas ${nextState ? 'suspender' : 'activar'} a ${targetUser.nombre}?`)) {
+  const handleDeleteUser = async (targetUser: any) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente a ${targetUser.nombre}? Esta acción no se puede deshacer.`)) {
       return;
     }
 
     try {
-      const res = await fetch(`/api/admin/users/${targetUser.rol}/${targetUser.id}/suspend`, {
-        method: 'POST',
+      const res = await fetch(`/api/admin/users/${targetUser.rol}/${targetUser.id}`, {
+        method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ suspendido: nextState })
+        }
       });
 
       const data = await res.json();
       if (res.ok) {
-        setAlertMsg({ text: data.message || 'Estado actualizado', type: 'success' });
+        setAlertMsg({ text: data.message || 'Usuario eliminado', type: 'success' });
         loadUsers();
         if (selectedUser && selectedUser.id === targetUser.id && selectedUser.rol === targetUser.rol) {
-          setSelectedUser({ ...selectedUser, suspendido: nextState });
+          setSelectedUser(null);
         }
       } else {
-        setAlertMsg({ text: data.message || 'Error al actualizar estado', type: 'error' });
+        setAlertMsg({ text: data.message || 'Error al eliminar usuario', type: 'error' });
       }
     } catch (err: any) {
       setAlertMsg({ text: err.message || 'Error de red', type: 'error' });
@@ -3952,13 +4024,13 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
                               onClick={() => setSelectedUser(u)}
                               className="text-xs font-bold text-primary hover:underline"
                             >
-                              Ver Docs
+                              Ver Docu
                             </button>
                             <button
-                              onClick={() => handleToggleSuspension(u)}
-                              className={`text-xs font-bold ${u.suspendido ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'}`}
+                              onClick={() => handleDeleteUser(u)}
+                              className="text-xs font-bold text-red-600 hover:text-red-800"
                             >
-                              {u.suspendido ? 'Activar' : 'Suspender'}
+                              Eliminar
                             </button>
                           </td>
                         </tr>
@@ -3990,9 +4062,12 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
                           <div>
                             <p className="text-[10px] font-bold text-slate-400 uppercase">DNI Frente</p>
                             {selectedUser.url_dni_frente ? (
-                              <a href={selectedUser.url_dni_frente} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
-                                <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Frente)
-                              </a>
+                              <div className="flex items-center gap-2 mt-1">
+                                <a href={selectedUser.url_dni_frente} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                                  <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Frente)
+                                </a>
+                                {selectedUser.fecha_actualizacion_dni && <span className="text-[10px] text-slate-400">({new Date(selectedUser.fecha_actualizacion_dni).toLocaleDateString()})</span>}
+                              </div>
                             ) : (
                               <span className="text-xs text-slate-400 italic">No disponible</span>
                             )}
@@ -4001,9 +4076,12 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
                           <div>
                             <p className="text-[10px] font-bold text-slate-400 uppercase">DNI Dorso</p>
                             {selectedUser.url_dni_dorso ? (
-                              <a href={selectedUser.url_dni_dorso} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
-                                <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Reverso)
-                              </a>
+                              <div className="flex items-center gap-2 mt-1">
+                                <a href={selectedUser.url_dni_dorso} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                                  <FileText className="w-3.5 h-3.5" /> Visualizar Documento (Reverso)
+                                </a>
+                                {selectedUser.fecha_actualizacion_dni && <span className="text-[10px] text-slate-400">({new Date(selectedUser.fecha_actualizacion_dni).toLocaleDateString()})</span>}
+                              </div>
                             ) : (
                               <span className="text-xs text-slate-400 italic">No disponible</span>
                             )}
@@ -4014,11 +4092,30 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
                               <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase">Antecedentes Penales</p>
                                 {selectedUser.certificado_buena_conducta ? (
-                                  <a href={selectedUser.certificado_buena_conducta} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1 mt-1">
-                                    <FileText className="w-3.5 h-3.5" /> Certificado de Buena Conducta
-                                  </a>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <a href={selectedUser.certificado_buena_conducta} target="_blank" rel="noreferrer" className="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                                      <FileText className="w-3.5 h-3.5" /> Certificado de Buena Conducta
+                                    </a>
+                                    {selectedUser.fecha_actualizacion_antecedentes && <span className="text-[10px] text-slate-400">({new Date(selectedUser.fecha_actualizacion_antecedentes).toLocaleDateString()})</span>}
+                                  </div>
                                 ) : (
-                                  <span className="text-xs text-red-500/80 font-bold">Sin Certificado</span>
+                                  <span className="text-xs text-red-500/80 font-bold mt-1 block">Sin Certificado</span>
+                                )}
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Certificaciones Profesionales</p>
+                                {selectedUser.certificados && selectedUser.certificados.length > 0 ? (
+                                  <div className="mt-1 space-y-1">
+                                    {selectedUser.certificados.map((cert: any, idx: number) => (
+                                      <div key={idx} className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-700">- {cert.titulo || cert.title || 'Certificado'}</span>
+                                        {selectedUser.fecha_actualizacion_certificados && <span className="text-[10px] text-slate-400">({new Date(selectedUser.fecha_actualizacion_certificados).toLocaleDateString()})</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400 italic mt-1 block">No se cargaron certificaciones</span>
                                 )}
                               </div>
 
@@ -4040,10 +4137,10 @@ const AdminDashboard = ({ user, token, onLogout }: { user: any; token: string; o
 
                       <div className="pt-4 border-t border-slate-100 flex gap-2">
                         <button
-                          onClick={() => handleToggleSuspension(selectedUser)}
-                          className={`flex-1 py-3 text-xs font-bold text-white rounded-xl transition-all active:scale-95 ${selectedUser.suspendido ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                          onClick={() => handleDeleteUser(selectedUser)}
+                          className="flex-1 py-3 text-xs font-bold text-white rounded-xl transition-all active:scale-95 bg-red-600 hover:bg-red-700"
                         >
-                          {selectedUser.suspendido ? 'Activar Usuario' : 'Suspender Usuario'}
+                          Eliminar Usuario
                         </button>
                       </div>
                     </Card>
@@ -4368,6 +4465,18 @@ export default function App() {
       setAdminToken(token);
       setUser({ role: 'ADMIN', name: 'Administrador' });
       setView('admin-dashboard');
+      return;
+    }
+
+    const savedUser = localStorage.getItem('yacajobs_user');
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+        setView('dashboard');
+      } catch (e) {
+        localStorage.removeItem('yacajobs_user');
+      }
     }
   }, []);
 
@@ -4377,7 +4486,13 @@ export default function App() {
   };
 
   const handleAuth = (userData: any) => {
-    setUser(userData);
+    // Filtrar datos sensibles (contraseñas) si existieran, aunque el backend no debería devolverlas
+    const safeUser = { ...userData };
+    delete safeUser.contrasena;
+    delete safeUser.password;
+    
+    setUser(safeUser);
+    localStorage.setItem('yacajobs_user', JSON.stringify(safeUser));
     setView('dashboard');
   };
 
@@ -4385,6 +4500,7 @@ export default function App() {
     setUser(null);
     setAdminToken(null);
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('yacajobs_user');
     setView('landing');
   };
 
