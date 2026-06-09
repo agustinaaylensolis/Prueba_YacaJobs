@@ -10,17 +10,13 @@ import { Login } from '../src/components/Login';
 // Aquí indicamos que todo este bloque de pruebas es sobre el componente "Login".
 describe('Componente Login', () => {
 
-  // 'it' (o 'test') define un caso de prueba específico. 
-  // La descripción debe explicar qué comportamiento estamos verificando.
+  // 'it' (o 'test') define un caso de prueba específico. La descripción debe explicar qué comportamiento estamos verificando.
   it('debería permitir al usuario escribir credenciales y hacer submit mostrando el estado de carga', async () => {
 
-    // 1. Renderizar el componente
-    // `render` monta el componente de React en el DOM simulado (jsdom) para que podamos interactuar con él.
+    // 1. Renderizar el componente, `render` monta el componente de React en el DOM simulado (jsdom) para que podamos interactuar con él.
     render(<Login />);
 
-    // 2. Encontrar los elementos en el DOM
-    // Buscamos los inputs y botones utilizando la filosofía de Testing Library: 
-    // buscar como lo haría un usuario.
+    // 2. Encontrar los elementos en el DOM Buscamos los inputs y botones utilizando la filosofía de Testing Library buscar como lo haría un usuario.
 
     // `getByLabelText` busca un elemento <input> que esté asociado a un <label> con el texto "Email".
     const emailInput = screen.getByLabelText(/email/i);
@@ -31,8 +27,7 @@ describe('Componente Login', () => {
     // `getByRole` es el selector más recomendado. Aquí buscamos un botón con el nombre "Iniciar Sesión".
     const submitButton = screen.getByRole('button', { name: /iniciar sesión/i });
 
-    // 3. Simular interacciones del usuario
-    // `userEvent` es la forma más realista de simular lo que hace un usuario (tipear letras una a una, hacer clic, etc).
+    // 3. Simular interacciones del usuario`userEvent` es la forma más realista de simular lo que hace un usuario (tipear letras una a una, hacer clic, etc).
     // Nota: userEvent siempre es asíncrono, por eso usamos 'await'.
     const user = userEvent.setup();
 
@@ -46,10 +41,8 @@ describe('Componente Login', () => {
     // Simulamos el clic en el botón de Iniciar Sesión
     await user.click(submitButton);
 
-    // 4. Validar el resultado (las aserciones)
-    // Usamos `expect` para comprobar que algo ocurrió.
-    // En nuestro caso, al hacer submit, el botón debería cambiar su texto a "Cargando..."
-    // y debería quedar deshabilitado (disabled).
+    // 4. Validar el resultado (las aserciones). Usamos `expect` para comprobar que algo ocurrió.
+    // En nuestro caso, al hacer submit, el botón debería cambiar su texto a "Cargando..." y debería quedar deshabilitado (disabled).
 
     // Buscamos el botón de nuevo (puede que el botón anterior haya mutado, pero es más seguro buscarlo por su nuevo estado/texto)
     // Nota: Volví a cambiar "enviando" por "cargando" para que el test pase exitosamente como solicitaste.
