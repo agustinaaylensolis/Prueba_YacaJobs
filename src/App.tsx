@@ -3047,6 +3047,46 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
                 {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar Cambios'}
               </Button>
             </Card>
+
+            <Card className="p-8 space-y-6">
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-red-500" /> Canal de Quejas y Soporte
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Si tuviste algún problema con el funcionamiento de la aplicación, pagos, o con otro usuario, puedes reportarlo directamente a la administración de YacaJobs.
+                </p>
+              </div>
+              <div className="bg-red-50/50 border border-red-100 rounded-2xl p-4 flex items-start gap-3">
+                <div className="p-2 bg-red-100 rounded-xl text-red-600 shrink-0">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Contacto Directo</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tu correo será enviado directamente a la casilla de administración: <strong className="text-red-600 font-semibold">yacajobsadmin@gmail.com</strong>
+                  </p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => {
+                  const subject = encodeURIComponent("Queja / Soporte - YacaJobs (Cliente)");
+                  const body = encodeURIComponent("Hola, me comunico para reportar el siguiente inconveniente:\n\n");
+                  window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=yacajobsadmin@gmail.com&su=${subject}&body=${body}`, "_blank");
+                }}
+                className="w-full py-4 text-sm font-bold bg-red-600 hover:bg-red-700 text-white flex items-center justify-center gap-2 rounded-2xl transition-all shadow-sm"
+              >
+                <Mail className="w-4 h-4" /> Redactar Queja en Gmail
+              </Button>
+              <div className="text-center mt-2">
+                <a 
+                  href="mailto:yacajobsadmin@gmail.com?subject=Queja%20/%20Soporte%20-%20YacaJobs%20(Cliente)"
+                  className="text-xs text-slate-400 hover:text-slate-600 underline"
+                >
+                  ¿No usas Gmail? Abrir cliente de correo predeterminado
+                </a>
+              </div>
+            </Card>
           </div>
         )}
 
@@ -3541,6 +3581,46 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
               <Button onClick={handleUpdateProfile} disabled={isSaving} className="w-full py-4 text-lg">
                 {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Guardar Cambios'}
               </Button>
+            </Card>
+
+            <Card className="p-8 space-y-6">
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-red-500" /> Canal de Quejas y Soporte
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Si tuviste algún problema con el funcionamiento de la aplicación, pagos, o con otro usuario, puedes reportarlo directamente a la administración de YacaJobs.
+                </p>
+              </div>
+              <div className="bg-red-50/50 border border-red-100 rounded-2xl p-4 flex items-start gap-3">
+                <div className="p-2 bg-red-100 rounded-xl text-red-600 shrink-0">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Contacto Directo</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tu correo será enviado directamente a la casilla de administración: <strong className="text-red-600 font-semibold">yacajobsadmin@gmail.com</strong>
+                  </p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => {
+                  const subject = encodeURIComponent("Queja / Soporte - YacaJobs (Trabajador)");
+                  const body = encodeURIComponent("Hola, me comunico para reportar el siguiente inconveniente:\n\n");
+                  window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=yacajobsadmin@gmail.com&su=${subject}&body=${body}`, "_blank");
+                }}
+                className="w-full py-4 text-sm font-bold bg-red-600 hover:bg-red-700 text-white flex items-center justify-center gap-2 rounded-2xl transition-all shadow-sm"
+              >
+                <Mail className="w-4 h-4" /> Redactar Queja en Gmail
+              </Button>
+              <div className="text-center mt-2">
+                <a 
+                  href="mailto:yacajobsadmin@gmail.com?subject=Queja%20/%20Soporte%20-%20YacaJobs%20(Trabajador)"
+                  className="text-xs text-slate-400 hover:text-slate-600 underline"
+                >
+                  ¿No usas Gmail? Abrir cliente de correo predeterminado
+                </a>
+              </div>
             </Card>
           </div>
         )}
