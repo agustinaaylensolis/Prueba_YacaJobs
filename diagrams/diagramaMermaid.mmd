@@ -1,135 +1,319 @@
 classDiagram
+    class Usuario{
+        +id
+        +nombre_y_apellido
+        +correo
+        +contrasena
+        +dni
+        +edad
+        +celular
+        +url_foto_perfil
+        +fecha_registro
+        +Usuario(id:int, nombre_y_apellido: string, contrasena:string, dni:number, edad:number, correo:string, celular:string, url_foto_perfil: string, fecha_registro:date)
+        +getnombre():String 
+        -setNombre(nombre_y_apellido: string ) : void
+        +getContrasena():String 
+        -setContrasena(contrasena: string ) : void
+        +getDni(): number 
+        -setDni(dni: number ) : void
+        +getEdad(): number 
+        -setEdad(edad: number ) : void
+        +getCorreo(): String 
+        -setCorreo(correo:string) : void
+        +getCelular(): number 
+        -setCelular(celular: string ) : void
+        +getFotoPerfil(): string
+        -setFotoPerfil(url_foto_perfil: string) : void
+        +getFechaRegistro(): date
+        -setFechaRegistro(fecha_registro: date) : void
+        +login(correo:string, contrasena:string): void 
+        +logout()
+        +actualizarPerfil()
+    }
 
-%% =========================
-%% MODELO DE DOMINIO
-%% =========================
+    class Cliente{
+        +url_dni_frente
+        +url_dni_dorso
+        +url_certificado
+        +Cliente(url_dni_frente: string, url_dni_dorso: string, url_certificado: string)
+        +getUrlDniFrente():string
+        -setUrlDniFrente(url_dni_frente: string) : void
+        +getUrlDniDorso():string
+        -setUrlDniDorso(url_dni_dorso: string) : void
+        +getUrlCertificado():string
+        -setUrlCertificado(url_certificado: string) : void
+    }
 
-class Usuario{
-    +id
-    +nombre_y_apellido
-    +correo
-    +contrasena
-    +dni
-    +edad
-    +celular
-    +url_foto_perfil
-    +fecha_registro
-}
+    class Trabajador{
+        +url_dni_frente_trabajador
+        +url_dni_reverso_trabajador
+        +certificado_trabajador
+        +monotributo_trabajador
+        +matricula_trabajador
+        +puntuacion
+        +Trabajador(url_dni_frente_trabajador: string, url_dni_reverso_trabajador: string, certificado_trabajador: string, monotributo_trabajador: string, matricula_trabajador: string, puntuacion: number)
+        +getUrlDniFrenteTrabajador():string
+        -setUrlDniFrente(url_dni_frente: string) : void
+        +getUrlDniReversoTrabajador():string
+        -setUrlDniReverso(url_dni_reverso: string) : void
+        +getCertificadoTrabajador():string
+        -setCertificadoTrabajador(certificado_trabajador: string) : void
+        +getMonotributoTrabajador():string
+        -setMonotributoTrabajador(monotributo_trabajador: string) : void
+        +getMatriculaTrabajador():string
+        -setMatriculaTrabajador(matricula_trabajador: string) : void
+        +getPuntuacion():number
+        -setPuntuacion(puntuacion: number) : void
+    }
 
-class Cliente{
-    +url_dni_frente
-    +url_dni_dorso
-    +url_certificado
-    +crearPublicacion()
-    +verMisPublicaciones()
-    +aceptarPostulacion()
-    +valorarTrabajador()
-}
+    class Oficio{
+        +id_oficio
+        +nombre_oficio
+        +especialidad_oficio
+        +Oficio(id_oficio: int, nombre_oficio: string, especialidad_oficio: string)
+        +getOficio():String 
+        -setOficio(oficio: string ) : void
+        +getNombreOficio(): string
+        -setNombreOficio(nombre_oficio:string): void
+        +getEspecialidadOficio(): string
+        -setEspecialidadOficio(especialidad_oficio: string ) : void
+    }
 
-class Trabajador{
-    +url_dni_frente_trabajador
-    +url_dni_reverso_trabajador
-    +certificado_trabajador
-    +monotributo_trabajador
-    +matricula_trabajador
-    +puntuacion
-    +postularse()
-    +verMisPostulaciones()
-    +agregarOficio()
-}
+    class Publicacion{
+        +id_publi
+        +fecha_publi
+        +tipo_urgencia  
+        +descripcion_publi
+        +estado_publi
+        +Publicacion(id_publi: int, fecha_publi: date, tipo_urgencia: string, descripcion_publi: string, estado_publi: string)
+        +getIdPubli():number
+        -setIdPubli(id_publi:number ) : void
+        +getFechaPubli():date
+        -setFechaPubli(fecha_publi:date ) : void
+        +getTipoUrgencia():string
+        -setTipoUrgencia(tipo_urgencia:string) : void
+        +getDescripcionPubli(): string
+        -setDescripcionPubli(descripcion_publi:string ) : void
+        +getEstadoPubli(): string
+        -setEstadoPubli(estado_publi:string) : void
+        +crearPublicacion()
+        +verMisPublicaciones()
+    }
 
-class Oficio{
-    +id_oficio
-    +nombre_oficio
-    +especialidad_oficio
-}
+    class Postulacion{
+        +id_postulacion
+        +presupuesto
+        +descripcion_postulacion
+        +fecha_postulacion
+        +Postulacion(id_postulacion: int, presupuesto: number, descripcion_postulacion: string, fecha_postulacion: date)
+        +getIdPostulacion(): number
+        -setIdPostulacion(id_postulacion: number ) : void
+        +getPresupuesto(): number
+        -setPresupuesto(presupuesto:number): void
+        +getDescripcionPostulacion(): string
+        -setDescripcionPostulacion(descripcion_postulacion: string) : void
+        +getFechaPostulacion(): date
+        -setFechaPostulacion(fecha_postulacion:date) : void
+        +aceptarPostulacion()
+        +verMisPostulaciones()
+    }
 
-class Publicacion{
-    +id_publi
-    +fecha_publi
-    +tipo_urgencia
-    +descripcion_publi
-    +estado_publi
-}
+    class Valoracion{
+        +id_valoracion
+        +puntuacion
+        +comentario
+        +fecha_valoracion
+        +Valoracion(id_valoracion: int, puntuacion: number, comentario: string, fecha_valoracion: date)
+        +getIdValoracion(): number
+        -setIdValoracion(id_valoracion: number ) : void
+        +getPuntuacion(): number
+        -setPuntuacion(puntuacion: number ) : void
+        +getComentario(): string
+        -setComentario(comentario: string ) : void
+        +getFechaValoracion(): date
+        -setFechaValoracion(fecha_valoracion: date ) : void   
+        +valorarTrabajador()
+    }
 
-class Postulacion{
-    +id_postulacion
-    +presupuesto
-    +descripcion_postulacion
-    +fecha_postulacion
-}
+    class Conversacion{
+        +id_conversacion
+        +estado_conversacion
+        +ultimo_mensaje_preview
+        +ultima_actividad
+        +fecha_creacion
+        +Conversacion(id_conversacion: int, estado_conversacion: string, ultimo_mensaje_preview: string, ultima_actividad: date, fecha_creacion: date)
+        +getIdConversacion() : number
+        -setIdConversacion(id_conversacion: number) : void
+        +getEstadoConversacion() : string
+        -setEstadoConversacion(estado_conversacion: string) : void
+        +getUltimoMensajePreview() : string
+        -setUltimoMensajePreview(ultimo_mensaje_preview: string) : void
+        +getUltimaActividad() : date
+        -setUltimaActividad(ultima_actividad: date) : void
+        +getFechaCreacion() : date
+        -setFechaCreacion(fecha_creacion: date) : void
+        +iniciarConversacion() : void
+        +cerrarConversacion() : void
+    }
 
-class Valoracion{
-    +id_valoracion
-    +puntuacion
-    +comentario
-    +fecha_valoracion
-}
+    class Mensaje{
+        +id_mensaje
+        +contenido_mensaje
+        +leido_por_cliente_at
+        +leido_por_trabajador_at
+        +fecha_mensaje
+        +Mensaje(id_mensaje: int, contenido_mensaje: string, leido_por_cliente_at: date, leido_por_trabajador_at: date, fecha_mensaje: date)
+        +getIdMensaje() : number
+        -setIdMensaje(id_mensaje: number) : void
+        +getContenidoMensaje() : string
+        -setContenidoMensaje(contenido_mensaje: string) : void
+        +getLeidoPorClienteAt() : date
+        -setLeidoPorClienteAt(leido_por_cliente_at: date) : void
+        +getLeidoPorTrabajadorAt() : date
+        -setLeidoPorTrabajadorAt(leido_por_trabajador_at: date) : void
+        +getFechaMensaje() : date
+        -setFechaMensaje(fecha_mensaje: date) : void
+        +enviarMensaje() : void
+        +marcarComoLeido() : void
+    }
 
-Usuario <|-- Cliente
-Usuario <|-- Trabajador
+    class Contratacion{
+        +id_contratacion
+        +estado_contratacion
+        +monto_acordado
+        +precio_final_acordado
+        +fecha_horario_acordado
+        +materiales_incluidos
+        +direccion_o_zona
+        +condiciones_especiales
+        +fecha_solicitud
+        +fecha_confirmacion
+        +fecha_rechazo
+        +detalle_acuerdo
+        +descripcion_materiales
+        +Contratacion(id_contratacion: int, estado_contratacion: string, monto_acordado: number, precio_final_acordado: number, fecha_horario_acordado: date, materiales_incluidos: boolean, direccion_o_zona: string, condiciones_especiales: string, fecha_solicitud: date, fecha_confirmacion: date, fecha_rechazo: date, detalle_acuerdo: string, descripcion_materiales: string)
+        +getIdContratacion() : number
+        -setIdContratacion(id_contratacion: number) : void
+        +getEstadoContratacion() : string
+        -setEstadoContratacion(estado_contratacion: string) : void
+        +getMontoAcordado() : number
+        -setMontoAcordado(monto_acordado: number) : void
+        +getPrecioFinalAcordado() : number
+        -setPrecioFinalAcordado(precio_final_acordado: number) : void
+        +getFechaHorarioAcordado() : date
+        -setFechaHorarioAcordado(fecha_horario_acordado: date) : void
+        +getMaterialesIncluidos() : boolean
+        -setMaterialesIncluidos(materiales_incluidos: boolean) : void
+        +getDireccionOZona() : string
+        -setDireccionOZona(direccion_o_zona: string) : void
+        +getCondicionesEspeciales() : string
+        -setCondicionesEspeciales(condiciones_especiales: string) : void
+        +getFechaSolicitud() : date
+        -setFechaSolicitud(fecha_solicitud: date) : void
+        +getFechaConfirmacion() : date
+        -setFechaConfirmacion(fecha_confirmacion: date) : void
+        +getFechaRechazo() : date
+        -setFechaRechazo(fecha_rechazo: date) : void
+        +getDetalleAcuerdo() : string
+        -setDetalleAcuerdo(detalle_acuerdo: string) : void
+        +getDescripcionMateriales() : string
+        -setDescripcionMateriales(descripcion_materiales: string) : void
+        +crearPropuesta() : void
+        +aceptarPropuesta() : void
+        +rechazarPropuesta() : void
+        +finalizarContratacion() : void
+        +cancelarContratacion() : void
+    }
 
-Cliente "1" --> "1..*" Publicacion : crea
-Publicacion "1" --> "1..*" Postulacion : recibe
-Trabajador "1" --> "1..*" Postulacion : realiza
+    %% ========================================================================
+    %% PATRÓN OBSERVER (Notificaciones al crear Publicación)
+    %% ========================================================================
 
-Trabajador "1..*" --> "1..*" Oficio : posee
+    namespace Patron_Observer {
+        class Subject {
+            <<interface>>
+            +attach(observer) void
+            +detach(observer) void
+            +notify(data) Promise~void~ | void
+        }
 
-Cliente "1" --> "1..*" Valoracion : realiza
-Trabajador "1" --> "1..*" Valoracion : recibe
+        class Observer {
+            <<interface>>
+            +update(subject, data) Promise~void~ | void
+        }
 
+        class JobPostingNotifier {
+            <<Subject concreto>>
+            -Observer[] observers
+            +attach(observer) void
+            +detach(observer) void
+            +notify(post) Promise~void~
+        }
 
-%% =========================
-%% STRATEGY PATTERN
-%% =========================
+        class EmailNotificationObserver {
+            <<Observer concreto>>
+            -SupabaseService supabaseService
+            +update(subject, post) Promise~void~
+        }
 
-class ClientDashboard{
-    +handleSearch()
-    +handleViewWorkerProfile()
-}
+        class InAppNotificationObserver {
+            <<Observer concreto>>
+            -SupabaseService supabaseService
+            +update(subject, post) Promise~void~
+        }
+    }
 
-class SearchStrategy{
-    <<interface>>
-    +execute()
-}
+    %% ========================================================================
+    %% RELACIONES DE DOMINIO (Herencia y Asociaciones)
+    %% ========================================================================
 
-class SearchAllWorkersStrategy{
-    +execute()
-}
+    Usuario <|-- Cliente : hereda
+    Usuario <|-- Trabajador : hereda
 
-class SearchByTradeStrategy{
-    +execute()
-}
+    Cliente "1" --> "1..*" Publicacion : crea
+    Publicacion "1" --> "1..*" Postulacion : recibe
+    Trabajador "1" --> "1..*" Postulacion : realiza
 
-class SearchProfileStrategy{
-    +execute()
-}
+    Trabajador "1..*" --> "1..*" Oficio : posee
 
-class SearchStrategyFactory{
-    +create(type)
-}
+    Cliente "1" --> "1..*" Valoracion : realiza
+    Trabajador "1" --> "1..*" Valoracion : recibe
 
-SearchAllWorkersStrategy ..|> SearchStrategy
-SearchByTradeStrategy ..|> SearchStrategy
-SearchProfileStrategy ..|> SearchStrategy
+    Cliente "1" --> "0..*" Conversacion : participa
+    Trabajador "1" --> "0..*" Conversacion : participa
+    Publicacion "1" --> "0..*" Conversacion : deriva en
+    Postulacion "1" --> "0..*" Conversacion : deriva en
 
-SearchStrategyFactory --> SearchAllWorkersStrategy : creates
-SearchStrategyFactory --> SearchByTradeStrategy : creates
-SearchStrategyFactory --> SearchProfileStrategy : creates
+    Conversacion "1" --> "0..*" Mensaje : contiene
+    Cliente "1" --> "0..*" Mensaje : envia
+    Trabajador "1" --> "0..*" Mensaje : envia
 
-ClientDashboard --> SearchStrategyFactory : solicita
+    Conversacion "1" --> "0..1" Contratacion : formaliza
+    Cliente "1" --> "0..*" Contratacion : solicita
+    Trabajador "1" --> "0..*" Contratacion : acuerda
 
-ClientDashboard ..> SearchStrategy : utiliza
+    %% ========================================================================
+    %% RELACIONES DEL PATRÓN OBSERVER
+    %% ========================================================================
 
+    Subject <|.. JobPostingNotifier : implementa
+    Observer <|.. EmailNotificationObserver : implementa
+    Observer <|.. InAppNotificationObserver : implementa
+    JobPostingNotifier o--> Observer : agrega
 
-%% =========================
-%% RELACION DEL PATRON CON EL NEGOCIO
-%% =========================
+    EmailNotificationObserver --> JobPostingNotifier : se suscribe
+    InAppNotificationObserver --> JobPostingNotifier : se suscribe
 
-SearchAllWorkersStrategy ..> Trabajador : obtiene
+    %% ========================================================================
+    %% RELACIONES CRUZADAS: CÓMO SE CONECTA EL OBSERVER CON EL DOMINIO
+    %% ========================================================================
 
-SearchByTradeStrategy ..> Trabajador : filtra
+    %% Cuando se crea una Publicación, el sistema dispara la notificación
+    Publicacion ..> JobPostingNotifier : "al crearse\ndispara notify()"
 
-SearchByTradeStrategy ..> Oficio : busca por
+    %% Los observers buscan Trabajadores que tengan el Oficio de la Publicación
+    EmailNotificationObserver ..> Trabajador : busca trabajadores\ndel oficio
+    EmailNotificationObserver ..> Oficio : consulta oficio\nde la publicación
 
-SearchProfileStrategy ..> Trabajador : perfil completo
+    InAppNotificationObserver ..> Trabajador : busca trabajadores\ndel oficio
+    InAppNotificationObserver ..> Oficio : consulta oficio\nde la publicación

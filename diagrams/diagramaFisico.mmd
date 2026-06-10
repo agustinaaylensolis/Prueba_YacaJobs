@@ -1,0 +1,163 @@
+erDiagram
+    oficios {
+        integer id_oficio PK
+        character_varying nombre_oficio UK
+        character_varying especialidad_oficio
+    }
+    clientes {
+        integer id_cliente PK
+        character_varying contrasena_cliente
+        character_varying nombre_y_apellido_cliente
+        integer dni_cliente UK
+        character_varying correo_cliente UK
+        character_varying celular_cliente
+        text url_foto_perfil
+        text url_dni_frente
+        text url_dni_dorso
+        timestamp fecha_registro
+        integer edad_cliente
+        boolean suspendido
+        timestamp fecha_actualizacion_foto
+        timestamp fecha_actualizacion_dni
+    }
+    trabajadores {
+        integer id_trabajador PK
+        character_varying contrasena_trabajador
+        character_varying nombre_y_apellido_trabajador
+        integer dni_trabajador UK
+        character_varying correo_trabajador UK
+        character_varying nro_celular_trabajador
+        boolean constancia_policial
+        text monotributo_trabajador
+        character_varying matricula_trabajador
+        text certificado_trabajador
+        text url_foto_perfil
+        text url_dni_frente_trabajador
+        text url_dni_reverso_trabajador
+        numeric puntuacion
+        timestamp fecha_registro
+        integer edad_trabajador
+        boolean suspendido
+        jsonb certificados
+        timestamp fecha_actualizacion_foto
+        timestamp fecha_actualizacion_dni
+        timestamp fecha_actualizacion_antecedentes
+        timestamp fecha_actualizacion_certificados
+    }
+    oficio_del_trabajador {
+        integer id_oficio PK, FK
+        integer id_trabajador PK, FK
+    }
+    publicaciones {
+        integer id_publi PK
+        timestamp fecha_publi
+        character_varying tipo_urgencia
+        text descripcion_publi
+        boolean monotributo_publi
+        boolean matricula_publi
+        boolean certificado_publi
+        integer id_cliente FK
+        integer id_oficio FK
+        character_varying estado
+        character_varying estado_publi
+    }
+    postulaciones {
+        integer id_postulacion PK
+        integer id_trabajador FK
+        integer id_publi FK
+        numeric presupuesto
+        text materiales
+        text descripcion_postulacion
+        timestamp fecha_postulacion
+    }
+    valoraciones {
+        integer id_valoracion PK
+        integer puntuacion
+        text comentario
+        integer id_emisor_cliente FK
+        integer id_receptor_trabajador FK
+        timestamp fecha_valoracion
+    }
+    conversaciones {
+        integer id_conversacion PK
+        integer id_cliente FK
+        integer id_trabajador FK
+        integer id_publi FK
+        integer id_postulacion FK
+        character_varying estado_conversacion
+        text ultimo_mensaje_preview
+        timestamp ultima_actividad
+        timestamp fecha_creacion
+    }
+    mensajes {
+        integer id_mensaje PK
+        integer id_conversacion FK
+        integer id_emisor_cliente FK
+        integer id_emisor_trabajador FK
+        text contenido_mensaje
+        timestamp leido_por_cliente_at
+        timestamp leido_por_trabajador_at
+        timestamp fecha_mensaje
+    }
+    contrataciones {
+        integer id_contratacion PK
+        integer id_conversacion FK, UK
+        integer id_cliente FK
+        integer id_trabajador FK
+        character_varying estado_contratacion
+        numeric monto_acordado
+        numeric precio_final_acordado
+        timestamp fecha_horario_acordado
+        boolean materiales_incluidos
+        text direccion_o_zona
+        text condiciones_especiales
+        timestamp fecha_solicitud
+        timestamp fecha_confirmacion
+        timestamp fecha_rechazo
+        text detalle_acuerdo
+        text descripcion_materiales
+    }
+    notificaciones {
+        integer id_notificacion PK
+        integer id_usuario
+        character_varying tipo_usuario
+        character_varying titulo
+        text mensaje
+        integer id_publi FK
+        boolean leido
+        timestamp fecha_creacion
+        character_varying seccion_destino
+    }
+    administradores {
+        integer id_admin PK
+        character_varying correo UK
+        character_varying contrasena
+        timestamp fecha_registro
+    }
+
+    oficios ||--o{ oficio_del_trabajador : "tiene"
+    trabajadores ||--o{ oficio_del_trabajador : "pertenece_a"
+    
+    clientes ||--o{ publicaciones : "crea"
+    oficios ||--o{ publicaciones : "requerido_en"
+    
+    trabajadores ||--o{ postulaciones : "realiza"
+    publicaciones ||--o{ postulaciones : "recibe"
+    
+    clientes ||--o{ valoraciones : "emite"
+    trabajadores ||--o{ valoraciones : "recibe"
+    
+    clientes ||--o{ conversaciones : "participa"
+    trabajadores ||--o{ conversaciones : "participa"
+    publicaciones ||--o| conversaciones : "asociada_a"
+    postulaciones ||--o| conversaciones : "asociada_a"
+    
+    conversaciones ||--o{ mensajes : "contiene"
+    clientes ||--o{ mensajes : "envia"
+    trabajadores ||--o{ mensajes : "envia"
+    
+    conversaciones ||--|| contrataciones : "deriva_en"
+    clientes ||--o{ contrataciones : "solicita"
+    trabajadores ||--o{ contrataciones : "acuerda"
+    
+    publicaciones ||--o{ notificaciones : "genera"
