@@ -46,7 +46,7 @@ describe('Componente Login', () => {
 
     // Buscamos el botón de nuevo (puede que el botón anterior haya mutado, pero es más seguro buscarlo por su nuevo estado/texto)
     // Nota: Volví a cambiar "enviando" por "cargando" para que el test pase exitosamente como solicitaste.
-    const loadingButton = screen.getByRole('button', { name: /enviando/i });
+    const loadingButton = screen.getByRole('button', { name: /cargando/i });
 
     // Verificamos que esté en el documento y esté deshabilitado.
     expect(loadingButton).toBeInTheDocument();

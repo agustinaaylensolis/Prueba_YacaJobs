@@ -1520,6 +1520,27 @@ const LandingPage = ({ onStart, onAdminClick }: { onStart: (role: UserRole | nul
 
 const uploadFileToSupabase = async (file: File | null, bucket: string, pathPrefix: string): Promise<string | undefined> => {
   if (!file) return undefined;
+
+  // Validación de peso máximo: 5MB
+  const MAX_SIZE = 5 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    throw new Error(`El archivo ${file.name} supera el peso máximo permitido de 5MB.`);
+  }
+
+  // Validación de tipo de archivo
+  const isImage = file.type.startsWith('image/');
+  const isPdf = file.type === 'application/pdf';
+  
+  if (bucket === 'certificados') {
+    if (!isImage && !isPdf) {
+      throw new Error(`El archivo ${file.name} tiene un formato no válido. Debe ser imagen o PDF.`);
+    }
+  } else {
+    if (!isImage) {
+      throw new Error(`El archivo ${file.name} no es una imagen válida.`);
+    }
+  }
+
   const fileExt = file.name.split('.').pop();
   const fileName = `${pathPrefix}_${Date.now()}.${fileExt}`;
   const { data, error } = await supabase.storage.from(bucket).upload(fileName, file);
@@ -1929,7 +1950,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
               {step === 2 && !isLogin && (
                 <motion.div key="s2" className="space-y-4">
                   <div>
-                    <input className={`input-soft ${fieldErrors.name ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Nombre completo" value={formData.name} onChange={e => setFormField('name', e.target.value)} />
+                    <input className={`input-soft ${fieldErrors.name ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Nombre completo" value={formData.name} onChange={e => setFormField('name', e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, ''))} />
                     {fieldErrors.name && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.name}</p>}
                   </div>
                   <div>
@@ -1942,7 +1963,7 @@ const AuthForm = ({ initialIsLogin, onAuth, onBackToLanding }: { initialIsLogin:
                       {fieldErrors.age && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.age}</p>}
                     </div>
                     <div className="flex-1">
-                      <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value)} />
+                      <input className={`input-soft ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : ''}`} placeholder="Celular" value={formData.phone} onChange={e => setFormField('phone', e.target.value.replace(/[^0-9]/g, ''))} />
                       {fieldErrors.phone && <p className="text-xs text-red-600 font-semibold mt-1">{fieldErrors.phone}</p>}
                     </div>
                   </div>
@@ -3030,12 +3051,12 @@ const ClientDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
-                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
+                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '') })} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
-                    <input className="input-soft" value={profileData.celular_cliente} onChange={e => setProfileData({ ...profileData, celular_cliente: e.target.value })} />
+                    <input className="input-soft" value={profileData.celular_cliente} onChange={e => setProfileData({ ...profileData, celular_cliente: e.target.value.replace(/[^0-9]/g, '') })} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-400 uppercase">Edad</label>
@@ -3520,11 +3541,11 @@ const WorkerDashboard = ({ user, onLogout }: { user: any; onLogout: () => void }
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-400 uppercase">Nombre y Apellido</label>
-                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} />
+                  <input className="input-soft" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '') })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-400 uppercase">Celular</label>
-                  <input className="input-soft" value={profileData.nro_celular_trabajador} onChange={e => setProfileData({ ...profileData, nro_celular_trabajador: e.target.value })} />
+                  <input className="input-soft" value={profileData.nro_celular_trabajador} onChange={e => setProfileData({ ...profileData, nro_celular_trabajador: e.target.value.replace(/[^0-9]/g, '') })} />
                 </div>
 
                 <div className="pt-4 border-t border-slate-100">

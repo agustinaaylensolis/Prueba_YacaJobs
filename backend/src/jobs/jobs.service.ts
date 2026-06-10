@@ -772,9 +772,15 @@ export class JobsService {
     // Enrich with actual trade names if needed, or let the component do it.
     // For MVP, we'll return the workers and their scores.
     // Ordenar descendente por puntuacion (mayor puntuacion primero, null/0 al final)
+    // En caso de empate (ej. sin calificacion), ordenar alfabeticamente por nombre
     const sortedData = (data || []).sort((a, b) => {
       const scoreA = a.puntuacion === null || a.puntuacion === undefined ? 0 : Number(a.puntuacion);
       const scoreB = b.puntuacion === null || b.puntuacion === undefined ? 0 : Number(b.puntuacion);
+      if (scoreA === scoreB) {
+        const nameA = a.nombre_y_apellido_trabajador || '';
+        const nameB = b.nombre_y_apellido_trabajador || '';
+        return nameA.localeCompare(nameB);
+      }
       return scoreB - scoreA;
     });
 
@@ -871,9 +877,15 @@ export class JobsService {
     }));
 
     // Ordenar descendente por puntuacion (mayor puntuacion primero, null/0 al final)
+    // En caso de empate (ej. sin calificacion), ordenar alfabeticamente por nombre
     normalizedWorkers.sort((a, b) => {
       const scoreA = a.puntuacion === null || a.puntuacion === undefined ? 0 : Number(a.puntuacion);
       const scoreB = b.puntuacion === null || b.puntuacion === undefined ? 0 : Number(b.puntuacion);
+      if (scoreA === scoreB) {
+        const nameA = a.nombre_y_apellido_trabajador || '';
+        const nameB = b.nombre_y_apellido_trabajador || '';
+        return nameA.localeCompare(nameB);
+      }
       return scoreB - scoreA;
     });
 
