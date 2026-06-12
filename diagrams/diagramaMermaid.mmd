@@ -133,6 +133,7 @@ classDiagram
         +getFechaValoracion(): date
         -setFechaValoracion(fecha_valoracion: date ) : void   
         +valorarTrabajador()
+        +submitRatingAndFinalize() : void
     }
 
     class Conversacion{
@@ -154,6 +155,7 @@ classDiagram
         -setFechaCreacion(fecha_creacion: date) : void
         +iniciarConversacion() : void
         +cerrarConversacion() : void
+        +openConversation() : void
     }
 
     class Mensaje{
@@ -175,6 +177,7 @@ classDiagram
         -setFechaMensaje(fecha_mensaje: date) : void
         +enviarMensaje() : void
         +marcarComoLeido() : void
+        +sendMessage() : void
     }
 
     class Contratacion{
@@ -223,6 +226,8 @@ classDiagram
         +rechazarPropuesta() : void
         +finalizarContratacion() : void
         +cancelarContratacion() : void
+        +updateContractAgreement() : void
+        +updateContractStatus() : void
     }
 
     %% ========================================================================
