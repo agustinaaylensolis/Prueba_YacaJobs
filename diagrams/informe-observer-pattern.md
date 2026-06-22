@@ -41,7 +41,7 @@ export interface Observer {
 ```
 
 **Rol en el patrón:**
-Define el **método de callback** que el publicador invocará en cada observer cuando ocurra un evento. El parámetro `subject` permite al observer saber **quién** disparó la notificación, y `data` contiene los datos del evento (en este caso, la publicación creada).
+Define el **método de callback** que el publicador invocará en cada observer cuando ocurra un evento. El parámetro `subject` permite al observer saber **quién** disparó la notificación, y `data` contiene los datos del evento (en este caso, la publicación creada
 
 ---
 
