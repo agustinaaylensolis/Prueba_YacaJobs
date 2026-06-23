@@ -26,9 +26,8 @@ classDiagram
         -setFotoPerfil(url_foto_perfil: string) : void
         +getFechaRegistro(): date
         -setFechaRegistro(fecha_registro: date) : void
-        +login(correo:string, contrasena:string): void 
-        +logout()
-        +actualizarPerfil()
+        +login(email: string, pass: string, role: 'CLIENT' | 'WORKER')
+        updateProfile(role: 'CLIENT' | 'WORKER', id: number, updates: any)
     }
 
     class Cliente{
@@ -42,6 +41,9 @@ classDiagram
         -setUrlDniDorso(url_dni_dorso: string) : void
         +getUrlCertificado():string
         -setUrlCertificado(url_certificado: string) : void
+        registerClient(dto: RegisterClientDto)
+        getClientProfile(clientId: number)
+
     }
 
     class Trabajador{
@@ -64,6 +66,10 @@ classDiagram
         -setMatriculaTrabajador(matricula_trabajador: string) : void
         +getPuntuacion():number
         -setPuntuacion(puntuacion: number) : void
+        +registerWorker(dto: RegisterWorkerDto)
+        +getWorkerProfile(workerId: number)
+        +searchWorkersByText(q: string)
+        +getWorkers(tradeId?: number)
     }
 
     class Oficio{
@@ -77,6 +83,7 @@ classDiagram
         -setNombreOficio(nombre_oficio:string): void
         +getEspecialidadOficio(): string
         -setEspecialidadOficio(especialidad_oficio: string ) : void
+        +getTrades()
     }
 
     class Publicacion{
@@ -96,8 +103,9 @@ classDiagram
         -setDescripcionPubli(descripcion_publi:string ) : void
         +getEstadoPubli(): string
         -setEstadoPubli(estado_publi:string) : void
-        +crearPublicacion()
-        +verMisPublicaciones()
+        +createPost(data: any)
+        +getPosts(clientId?: number, tradeId?: number, workerId?: number)
+        +closePostManual(postId: number, clientId: number)
     }
 
     class Postulacion{
@@ -114,8 +122,9 @@ classDiagram
         -setDescripcionPostulacion(descripcion_postulacion: string) : void
         +getFechaPostulacion(): date
         -setFechaPostulacion(fecha_postulacion:date) : void
-        +aceptarPostulacion()
-        +verMisPostulaciones()
+        +postulate(data: any)
+        +getPostulations(postId: number)
+        
     }
 
     class Valoracion{
@@ -132,8 +141,13 @@ classDiagram
         -setComentario(comentario: string ) : void
         +getFechaValoracion(): date
         -setFechaValoracion(fecha_valoracion: date ) : void   
-        +valorarTrabajador()
-        +submitRatingAndFinalize() : void
+        +submitRatingAndFinalize(conversationId: number,data: {
+            puntuacion: number;
+            comentario?: string;
+            id_emisor_cliente: number;
+            id_receptor_trabajador: number;}
+            ) 
+
     }
 
     class Conversacion{
@@ -153,9 +167,10 @@ classDiagram
         -setUltimaActividad(ultima_actividad: date) : void
         +getFechaCreacion() : date
         -setFechaCreacion(fecha_creacion: date) : void
-        +iniciarConversacion() : void
-        +cerrarConversacion() : void
-        +openConversation() : void
+        +assertConversationAccess(conversationId: number, role: UserRole, userId: number)
+        +openConversation(data: OpenConversationDto)
+        +getConversations(role: UserRole, userId: number)
+        +getConversationContract(conversationId: number, role: UserRole, userId: number)
     }
 
     class Mensaje{
@@ -175,9 +190,9 @@ classDiagram
         -setLeidoPorTrabajadorAt(leido_por_trabajador_at: date) : void
         +getFechaMensaje() : date
         -setFechaMensaje(fecha_mensaje: date) : void
-        +enviarMensaje() : void
-        +marcarComoLeido() : void
-        +sendMessage() : void
+        +getMessages(conversationId: number, role: UserRole, userId: number)
+        +markConversationAsRead(conversationId: number, role: UserRole, userId: number)
+        +sendMessage(conversationId: number, messageData: SendMessageDto)
     }
 
     class Contratacion{
@@ -221,13 +236,10 @@ classDiagram
         -setDetalleAcuerdo(detalle_acuerdo: string) : void
         +getDescripcionMateriales() : string
         -setDescripcionMateriales(descripcion_materiales: string) : void
-        +crearPropuesta() : void
-        +aceptarPropuesta() : void
-        +rechazarPropuesta() : void
-        +finalizarContratacion() : void
-        +cancelarContratacion() : void
-        +updateContractAgreement() : void
-        +updateContractStatus() : void
+        +updateContractStatus(conversationId: number, data: UpdateContractStatusDto)
+        +getContractHistory(userId: number, role: string)
+        +updateContractAgreement(conversationId: number, data: UpdateContractAgreementDto)
+        +ensureContract(conversation: any, forceReset = false)
     }
 
     %% ========================================================================
